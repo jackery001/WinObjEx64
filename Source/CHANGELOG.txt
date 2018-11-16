@@ -1,3 +1,8 @@
+v1.6.1
+added W32pServiceTable view
+added process list dialog (extras)
+reimplemented service tables extraction code
+
 v1.6.0
 ported to msvc 2017 (with backward compatibility to 2015)
 reimplemented private namespaces lookup

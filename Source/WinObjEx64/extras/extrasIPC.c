@@ -4,9 +4,9 @@
 *
 *  TITLE:       EXTRASIPC.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  IPC supported: Pipes, Mailslots
 *
@@ -58,7 +58,7 @@ VOID IpcDisplayError(
     RtlSecureZeroMemory(&szBuffer, sizeof(szBuffer));
 
     switch (DialogMode) {
-    case IpcModeMailshots:
+    case IpcModeMailSlots:
         _strcpy(szBuffer, TEXT("Cannot open mailslot because: "));
         break;
     case IpcModeNamedPipes:
@@ -100,7 +100,7 @@ LPWSTR IpcCreateObjectPathWithName(
         sz += DEVICE_NAMED_PIPE_LENGTH;
         lpRootDirectory = DEVICE_NAMED_PIPE;
         break;
-    case IpcModeMailshots:
+    case IpcModeMailSlots:
         sz += DEVICE_MAILSLOT_LENGTH;
         lpRootDirectory = DEVICE_MAILSLOT;
         break;
@@ -186,7 +186,7 @@ VOID IpcMailslotQueryInfo(
     //validate context
     if (Context == NULL) {
         SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-        IpcDisplayError(hwndDlg, IpcModeMailshots);
+        IpcDisplayError(hwndDlg, IpcModeMailSlots);
         return;
     }
     if (
@@ -195,14 +195,14 @@ VOID IpcMailslotQueryInfo(
         )
     {
         SetLastError(ERROR_OBJECT_NOT_FOUND);
-        IpcDisplayError(hwndDlg, IpcModeMailshots);
+        IpcDisplayError(hwndDlg, IpcModeMailSlots);
         return;
     }
 
     hMailslot = NULL;
     if (!IpcOpenObjectMethod(Context, &hMailslot, GENERIC_READ)) {
         //on error display last win32 error
-        IpcDisplayError(hwndDlg, IpcModeMailshots);
+        IpcDisplayError(hwndDlg, IpcModeMailSlots);
         return;
     }
 
@@ -392,7 +392,7 @@ INT_PTR CALLBACK IpcTypeDialogProc(
                 pDlgContext = (EXTRASCONTEXT*)Context->Tag;
                 if (pDlgContext) {
                     switch (pDlgContext->DialogMode) {
-                    case IpcModeMailshots:
+                    case IpcModeMailSlots:
                         IpcMailslotQueryInfo(Context, hwndDlg);
                         break;
                     case IpcModeNamedPipes:
@@ -472,7 +472,7 @@ VOID IpcDlgShowProperties(
     Page.pfnDlgProc = IpcTypeDialogProc;
 
     switch (pDlgContext->DialogMode) {
-    case IpcModeMailshots:
+    case IpcModeMailSlots:
         Page.pszTemplate = MAKEINTRESOURCE(IDD_PROP_MAILSLOT);
         Page.pszTitle = TEXT("Mailslot");
         break;
@@ -488,7 +488,7 @@ VOID IpcDlgShowProperties(
     //
     // Disconnected clients cannot query security (see msfs!MsCommonQuerySecurityInfo).
     //
-    if (pDlgContext->DialogMode != IpcModeMailshots) {
+    if (pDlgContext->DialogMode != IpcModeMailSlots) {
 
         //
         //Create Security Dialog if available
@@ -770,19 +770,20 @@ INT_PTR CALLBACK IpcDlgProc(
             ImageList_Destroy(pDlgContext->ImageList);
 
             dlgIndex = 0;
-            if (pDlgContext->DialogMode == IpcModeMailshots)
-                dlgIndex = WOBJ_IPCDLG_MSLOT_IDX;
+            if (pDlgContext->DialogMode == IpcModeMailSlots)
+                dlgIndex = wobjIpcMailSlotsDlgId;
             else if (pDlgContext->DialogMode == IpcModeNamedPipes)
-                dlgIndex = WOBJ_IPCDLG_PIPES_IDX;
+                dlgIndex = wobjIpcPipesDlgId;
 
-            if ((dlgIndex == WOBJ_IPCDLG_MSLOT_IDX) || 
-                (dlgIndex == WOBJ_IPCDLG_PIPES_IDX))
+            if ((dlgIndex == wobjIpcMailSlotsDlgId) ||
+                (dlgIndex == wobjIpcPipesDlgId))
+            {
                 g_WinObj.AuxDialogs[dlgIndex] = NULL;
+            }
 
             RtlSecureZeroMemory(pDlgContext, sizeof(EXTRASCONTEXT));
         }
-        DestroyWindow(hwndDlg);
-        return TRUE;
+        return DestroyWindow(hwndDlg);
 
     case WM_COMMAND:
         if (LOWORD(wParam) == IDCANCEL) {
@@ -819,11 +820,11 @@ VOID extrasCreateIpcDialog(
     EXTRASCALLBACK CallbackParam;
 
     switch (Mode) {
-    case IpcModeMailshots:
-        dlgIndex = WOBJ_IPCDLG_MSLOT_IDX;
+    case IpcModeMailSlots:
+        dlgIndex = wobjIpcMailSlotsDlgId;
         break;
     case IpcModeNamedPipes:
-        dlgIndex = WOBJ_IPCDLG_PIPES_IDX;
+        dlgIndex = wobjIpcPipesDlgId;
         break;
     default:
         return;
@@ -850,7 +851,7 @@ VOID extrasCreateIpcDialog(
     g_WinObj.AuxDialogs[dlgIndex] = hwndDlg;
 
     switch (Mode) {
-    case IpcModeMailshots:
+    case IpcModeMailSlots:
         ResourceId = IDI_ICON_MAILSLOT;
         sz = DEVICE_MAILSLOT_LENGTH;
         lpObjectsRoot = DEVICE_MAILSLOT;

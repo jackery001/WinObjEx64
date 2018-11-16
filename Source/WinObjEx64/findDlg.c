@@ -4,9 +4,9 @@
 *
 *  TITLE:       FINDDLG.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -308,7 +308,7 @@ INT_PTR CALLBACK FindDlgProc(
         if (FindDlgGrip) DestroyWindow(FindDlgGrip);
         DestroyWindow(hwndDlg);
         FindDialog = NULL;
-        g_WinObj.AuxDialogs[WOBJ_FINDDLG_IDX] = NULL;
+        g_WinObj.AuxDialogs[wobjFindDlgId] = NULL;
         return TRUE;
 
     case WM_COMMAND:
@@ -439,8 +439,8 @@ VOID FindDlgCreate(
     HICON    hIcon;
 
     //do not allow second copy
-    if (g_WinObj.AuxDialogs[WOBJ_FINDDLG_IDX]) {
-        SetActiveWindow(g_WinObj.AuxDialogs[WOBJ_FINDDLG_IDX]);
+    if (g_WinObj.AuxDialogs[wobjFindDlgId]) {
+        SetActiveWindow(g_WinObj.AuxDialogs[wobjFindDlgId]);
         return;
     }
 
@@ -448,7 +448,7 @@ VOID FindDlgCreate(
     if (FindDialog == NULL) {
         return;
     }
-    g_WinObj.AuxDialogs[WOBJ_FINDDLG_IDX] = FindDialog;
+    g_WinObj.AuxDialogs[wobjFindDlgId] = FindDialog;
 
     FindDlgGrip = supCreateSzGripWindow(FindDialog);
 
@@ -456,7 +456,7 @@ VOID FindDlgCreate(
     //removed after use, see aboutDlg/propDlg.
     hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_MAIN), IMAGE_ICON, 0, 0, LR_SHARED);
     if (hIcon) {
-        SetClassLongPtr(g_WinObj.AuxDialogs[WOBJ_FINDDLG_IDX], GCLP_HICON, (LONG_PTR)hIcon);
+        SetClassLongPtr(g_WinObj.AuxDialogs[wobjFindDlgId], GCLP_HICON, (LONG_PTR)hIcon);
         DestroyIcon(hIcon);
     }
 

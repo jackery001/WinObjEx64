@@ -4,9 +4,9 @@
 *
 *  TITLE:       MAIN.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  Program entry point and main window handler.
 *
@@ -29,6 +29,57 @@ static LONG	SortColumn = 0;
 HTREEITEM	SelectedTreeItem = NULL;
 BOOL        bMainWndSortInverse = FALSE;
 HWND        hwndToolBar = NULL, hwndSplitter = NULL, hwndStatusBar = NULL, MainWindow = NULL;
+
+/*
+* MainWindowExtrasDisableAdminFeatures
+*
+* Purpose:
+*
+* Disable menu items require admin privileges.
+*
+*/
+VOID MainWindowExtrasDisableAdminFeatures(
+    _In_ HWND hWnd
+)
+{
+    HMENU hExtrasSubMenu = GetSubMenu(GetMenu(hWnd), 4);
+
+    MENUITEMINFO mii;
+
+    mii.cbSize = sizeof(mii);
+    mii.fMask = MIIM_STATE;
+    mii.fState = MFS_DISABLED;
+
+    //
+    // These features require driver usage.
+    //
+    if (g_kdctx.hDevice == NULL) {
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_SSDT, FALSE, &mii);
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_PRIVATENAMESPACES, FALSE, &mii);
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_W32PSERVICETABLE, FALSE, &mii);
+    }
+
+    //
+    // This feature is not supported in Windows 10 10586.
+    //
+    if (g_NtBuildNumber == 10586) {
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_PRIVATENAMESPACES, FALSE, &mii);
+    }
+
+    //
+    // This feature is only supported starting from Windows 10 14393 (RS1).
+    //
+    if (g_NtBuildNumber < 14393) {
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_W32PSERVICETABLE, FALSE, &mii);
+    }
+
+    //
+    // This feature is not unsupported in Wine.
+    //
+    if (g_kdctx.IsWine != FALSE) {
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_DRIVERS, FALSE, &mii);
+    }
+}
 
 /*
 * MainWindowObjectListCompareFunc
@@ -106,11 +157,11 @@ VOID MainWindowHandleObjectTreeProp(
     tvi.mask = TVIF_TEXT;
     tvi.hItem = SelectedTreeItem;
     if (TreeView_GetItem(g_hwndObjectTree, &tvi)) {
-        
+
         propCreateDialog(
-            hwnd, 
-            szBuffer, 
-            g_ObjectTypes[ObjectTypeDirectory].Name, 
+            hwnd,
+            szBuffer,
+            g_ObjectTypes[ObjectTypeDirectory].Name,
             NULL,
             NULL);
     }
@@ -153,9 +204,9 @@ VOID MainWindowHandleObjectListProp(
             lpDesc = supGetItemText(g_hwndObjectList, nSelected, 2, NULL);
 
             propCreateDialog(
-                hwnd, 
-                lpItemText, 
-                lpType, 
+                hwnd,
+                lpItemText,
+                lpType,
                 lpDesc,
                 NULL);
 
@@ -189,12 +240,6 @@ VOID MainWindowOnRefresh(
 
     if (g_kdctx.hDevice != NULL) {
         ObCollectionDestroy(&g_kdctx.ObCollection);
-        if (g_kdctx.hThreadWorker) {
-            if (WaitForSingleObject(g_kdctx.hThreadWorker, 5000) == WAIT_TIMEOUT)
-                TerminateThread(g_kdctx.hThreadWorker, 0);
-            CloseHandle(g_kdctx.hThreadWorker);
-            g_kdctx.hThreadWorker = NULL;
-        }
     }
 
     supFreeSCMSnapshot();
@@ -297,13 +342,10 @@ LRESULT MainWindowHandleWMCommand(
         break;
 
         //Extras -> Pipes
-    case ID_EXTRAS_PIPES:
-        extrasShowPipeDialog(hwnd);
-        break;
-
         //Extras -> Mailslots
+    case ID_EXTRAS_PIPES:
     case ID_EXTRAS_MAILSLOTS:
-        extrasShowMailslotsDialog(hwnd);
+        extrasShowIPCDialog(hwnd, LOWORD(wParam));
         break;
 
         //Extras -> UserSharedData
@@ -313,20 +355,25 @@ LRESULT MainWindowHandleWMCommand(
 
         //Extras -> Private Namespaces
     case ID_EXTRAS_PRIVATENAMESPACES:
-        //feature require driver usage
-        if (g_kdctx.hDevice != NULL) {
+        //
+        // Feature require driver usage and not supported in 10586.
+        //
+        if ((g_kdctx.hDevice != NULL) && (g_NtBuildNumber != 10586)) {
             extrasShowPrivateNamespacesDialog(hwnd);
         }
         break;
 
         //Extras -> KiServiceTable
+        //Extras -> W32pServiceTable
     case ID_EXTRAS_SSDT:
-
-        //feature require driver usage
+    case ID_EXTRAS_W32PSERVICETABLE:
+        //
+        // This feature require driver usage.
+        //
 #ifndef _DEBUG
         if (g_kdctx.hDevice != NULL) {
 #endif
-            extrasShowSSDTDialog(hwnd);
+            extrasShowSSDTDialog(hwnd, LOWORD(wParam));
 #ifndef _DEBUG
         }
 #endif
@@ -334,12 +381,28 @@ LRESULT MainWindowHandleWMCommand(
 
         //Extras -> Drivers
     case ID_EXTRAS_DRIVERS:
-        extrasShowDriversDialog(hwnd);
+        //
+        // Unsupported in Wine.
+        //
+        if (g_kdctx.IsWine == FALSE) {
+            extrasShowDriversDialog(hwnd);
+        }
+        break;
+
+        // Extras -> Process List
+    case ID_EXTRAS_PROCESSLIST:
+        extrasShowPsListDialog(hwnd);
         break;
 
     case ID_HELP_ABOUT:
-        DialogBoxParam(g_WinObj.hInstance, MAKEINTRESOURCE(IDD_DIALOG_ABOUT),
-            hwnd, (DLGPROC)&AboutDialogProc, 0);
+
+        DialogBoxParam(
+            g_WinObj.hInstance,
+            MAKEINTRESOURCE(IDD_DIALOG_ABOUT),
+            hwnd,
+            (DLGPROC)&AboutDialogProc,
+            0);
+
         break;
 
     case ID_HELP_HELP:
@@ -744,20 +807,20 @@ LRESULT CALLBACK MainWindowProc(
 }
 
 /*
-* MainDlgMsgHandler
+* MainWindowDlgMsgHandler
 *
 * Purpose:
 *
 * Check window message against existing dialogs.
 *
 */
-BOOL MainDlgMsgHandler(
+BOOL MainWindowDlgMsgHandler(
     _In_ MSG msg
 )
 {
     UINT c;
 
-    for (c = 0; c < WOBJ_MAX_DIALOGS; c++) {
+    for (c = 0; c < wobjMaxDlgId; c++) {
         if ((g_WinObj.AuxDialogs[c] != NULL)) {
             if (IsDialogMessage(g_WinObj.AuxDialogs[c], &msg))
                 return TRUE;
@@ -1121,25 +1184,7 @@ UINT WinObjExMain()
         // Hide admin only stuff.
         //
 
-        if (g_kdctx.hDevice == NULL) {
-            //require driver usage, remove
-            DeleteMenu(GetSubMenu(GetMenu(MainWindow), 4), ID_EXTRAS_SSDT, MF_BYCOMMAND);
-            DeleteMenu(GetSubMenu(GetMenu(MainWindow), 4), ID_EXTRAS_PRIVATENAMESPACES, MF_BYCOMMAND);
-        }
-
-        //
-        // This feature is not supported in Windows 10 10586.
-        //
-        if (g_NtBuildNumber == 10586) {
-            DeleteMenu(GetSubMenu(GetMenu(MainWindow), 4), ID_EXTRAS_PRIVATENAMESPACES, MF_BYCOMMAND);
-        }
-
-        //
-        // This feature is not unsupported in Wine.
-        //
-        if (g_kdctx.IsWine != FALSE) {
-            DeleteMenu(GetSubMenu(GetMenu(MainWindow), 4), ID_EXTRAS_DRIVERS, MF_BYCOMMAND);
-        }
+        MainWindowExtrasDisableAdminFeatures(MainWindow);
 
         //
         // Load listview images for object types.
@@ -1172,47 +1217,61 @@ UINT WinObjExMain()
             LR_CREATEDIBSECTION);
 
         if (g_ToolBarMenuImages) {
-
             supCreateToolbarButtons(hwndToolBar);
+        }
 
-            //set menu icons
-            hMenu = GetSubMenu(GetMenu(MainWindow), 1);
-            if (hMenu) {
-                supSetMenuIcon(hMenu, ID_VIEW_REFRESH,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 1));
-            }
-            hMenu = GetSubMenu(GetMenu(MainWindow), 2);
-            if (hMenu && g_ListViewImages) {
-                supSetMenuIcon(hMenu, ID_OBJECT_PROPERTIES,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 0));
-                supSetMenuIcon(hMenu, ID_OBJECT_GOTOLINKTARGET,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ListViewImages,
-                        ID_FROM_VALUE(IDI_ICON_SYMLINK)));
+        //set menu icons
+        hMenu = GetSubMenu(GetMenu(MainWindow), 1);
+        if (hMenu) {
+            supSetMenuIcon(hMenu, ID_VIEW_REFRESH,
+                (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 1));
+        }
+        hMenu = GetSubMenu(GetMenu(MainWindow), 2);
+        if (hMenu && g_ListViewImages) {
+            supSetMenuIcon(hMenu, ID_OBJECT_PROPERTIES,
+                (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 0));
+            supSetMenuIcon(hMenu, ID_OBJECT_GOTOLINKTARGET,
+                (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ListViewImages,
+                    ID_FROM_VALUE(IDI_ICON_SYMLINK)));
+        }
+
+        //set object -> find object menu image
+        hMenu = GetSubMenu(GetMenu(MainWindow), 3);
+        if (hMenu) {
+            supSetMenuIcon(hMenu, ID_FIND_FINDOBJECT,
+                (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 2));
+        }
+
+        //set extras -> menu images
+        hMenu = GetSubMenu(GetMenu(MainWindow), 4);
+        if (hMenu) {
+            // pipes & mailslots
+            supSetMenuIcon(hMenu, ID_EXTRAS_MAILSLOTS,
+                (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 5));
+            supSetMenuIcon(hMenu, ID_EXTRAS_PIPES,
+                (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 6));
+
+            // process list menu image
+            RtlSecureZeroMemory(&sii, sizeof(sii));
+            sii.cbSize = sizeof(sii);
+            if (SHGetStockIconInfo(SIID_APPLICATION, SHGSI_ICON | SHGFI_SMALLICON, &sii) == S_OK) {
+                supSetMenuIcon(hMenu, ID_EXTRAS_PROCESSLIST, (ULONG_PTR)sii.hIcon);
             }
 
-            //set object -> find object menu image
-            hMenu = GetSubMenu(GetMenu(MainWindow), 3);
-            if (hMenu) {
-                supSetMenuIcon(hMenu, ID_FIND_FINDOBJECT,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 2));
+            // private namespaces menu image
+            if (SHGetStockIconInfo(SIID_STACK, SHGSI_ICON | SHGFI_SMALLICON, &sii) == S_OK) {
+                supSetMenuIcon(hMenu, ID_EXTRAS_PRIVATENAMESPACES, (ULONG_PTR)sii.hIcon);
             }
+        }
 
-            //set extras-mailslots/pipes menu image
-            hMenu = GetSubMenu(GetMenu(MainWindow), 4);
-            if (hMenu) {
-                supSetMenuIcon(hMenu, ID_EXTRAS_MAILSLOTS,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 5));
-                supSetMenuIcon(hMenu, ID_EXTRAS_PIPES,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 6));
+        //set help menu image
+        hMenu = GetSubMenu(GetMenu(MainWindow), 5);
+        if (hMenu) {
+            RtlSecureZeroMemory(&sii, sizeof(sii));
+            sii.cbSize = sizeof(sii);
+            if (SHGetStockIconInfo(SIID_HELP, SHGSI_ICON | SHGFI_SMALLICON, &sii) == S_OK) {
+                supSetMenuIcon(hMenu, ID_HELP_HELP, (ULONG_PTR)sii.hIcon);
             }
-
-            //set help menu image
-            hMenu = GetSubMenu(GetMenu(MainWindow), 5);
-            if (hMenu) {
-                supSetMenuIcon(hMenu, ID_HELP_HELP,
-                    (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 3));
-            }
-
         }
 
         hAccTable = LoadAccelerators(g_WinObj.hInstance, MAKEINTRESOURCE(IDR_ACCELERATOR1));
@@ -1237,7 +1296,7 @@ UINT WinObjExMain()
 
         col.iSubItem = 2;
         col.pszText = TEXT("Type");
-        col.iOrder = 1;       
+        col.iOrder = 1;
         col.cx = 100;
         ListView_InsertColumn(g_hwndObjectList, 2, &col);
 
@@ -1258,7 +1317,7 @@ UINT WinObjExMain()
             if (rv == -1)
                 break;
 
-            if (MainDlgMsgHandler(msg1))
+            if (MainWindowDlgMsgHandler(msg1))
                 continue;
 
             if (IsDialogMessage(MainWindow, &msg1)) {

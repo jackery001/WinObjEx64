@@ -4,9 +4,9 @@
 *
 *  TITLE:       PROPDLG.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        27 Oct 2018
+*  DATE:        07 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -510,17 +510,6 @@ VOID propCreateDialog(
     }
     if (propContext == NULL)
         return;
-
-    //
-    // If worker available - wait on it.
-    //
-    if (g_kdctx.hDevice) {
-        if (g_kdctx.hThreadWorker) {
-            WaitForSingleObject(g_kdctx.hThreadWorker, INFINITE);
-            CloseHandle(g_kdctx.hThreadWorker);
-            g_kdctx.hThreadWorker = NULL;
-        }
-    }
 
     //
     // Remember previously focused window.

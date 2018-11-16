@@ -4,9 +4,9 @@
 *
 *  TITLE:       UI.H
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  Common header file for the user interface.
 *
@@ -33,7 +33,7 @@ typedef HWND(WINAPI *pfnHtmlHelpW)(
     _In_ DWORD_PTR dwData
     );
 
-#define PROGRAM_VERSION         L"1.6.0"
+#define PROGRAM_VERSION         L"1.6.1"
 #ifdef _USE_OWN_DRIVER
 #define PROGRAM_NAME            L"Windows Object Explorer 64-bit (Non-public version)"
 #else 
@@ -41,7 +41,6 @@ typedef HWND(WINAPI *pfnHtmlHelpW)(
 #endif
 #define PROFRAM_NAME_AND_TITLE  L"Object Explorer for Windows 7/8/8.1/10"
 #define MAINWINDOWCLASSNAME     L"WinObjEx64Class"
-
 
 #define T_PROPERTIES            L"Properties...\tEnter"
 #define T_GOTOLINKTARGET        L"Go To Link Target\tCtrl+->"
@@ -53,15 +52,18 @@ typedef HWND(WINAPI *pfnHtmlHelpW)(
 #define T_SAVETOFILE            L"Save list to File"
 #define T_DUMPDRIVER            L"Dump Driver"
 
-#define WOBJ_MAX_DIALOGS        7
-
-#define WOBJ_FINDDLG_IDX        0
-#define WOBJ_IPCDLG_PIPES_IDX   1
-#define WOBJ_IPCDLG_MSLOT_IDX   2
-#define WOBJ_USDDLG_IDX         3
-#define WOBJ_PNDLG_IDX          4
-#define WOBJ_SSDTDLG_IDX        5
-#define WOBJ_DRVDLG_IDX         6
+typedef enum _WOBJ_DIALOGS_ID {
+    wobjFindDlgId = 0,
+    wobjIpcPipesDlgId,
+    wobjIpcMailSlotsDlgId,
+    wobjUSDDlgId,
+    wobjPNSDlgId,
+    wobjKSSTDlgId,
+    wobjW32SSTDlgId,
+    wobjPsListDlgId,
+    wobjDriversDlgId,
+    wobjMaxDlgId
+} WOBJ_DIALOGS_ID;
 
 #define MAX_TEXT_CONVERSION_ULONG64 32
 

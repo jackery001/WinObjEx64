@@ -4,9 +4,9 @@
 *
 *  TITLE:       KLDBG.H
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  Common header file for the Kernel Debugger Driver support.
 *
@@ -48,6 +48,9 @@ typedef struct _OBJECT_COLLECTION {
 
 typedef struct _KLDBGCONTEXT {
 
+    //Is debugging enabled
+    BOOL ShowKdError;
+
     //Is user full admin
     BOOL IsFullAdmin;
 
@@ -67,24 +70,25 @@ typedef struct _KLDBGCONTEXT {
     //kldbgdrv device handle
     HANDLE hDevice;
 
-    //worker handle
-    HANDLE hThreadWorker;
-
     //address of invalid request handler
     PVOID IopInvalidDeviceRequest;
 
     //address of PrivateNamespaceLookupTable
-    PVOID ObpPrivateNamespaceLookupTable;
+    PVOID PrivateNamespaceLookupTable;
 
     //ntoskrnl base and size
     PVOID NtOsBase;
     ULONG NtOsSize;
 
-    //value of nt!KiServiceLimit
-    ULONG KiServiceLimit;
+    //ntoskrnl mapped image
+    PVOID NtOsImageMap;
 
-    //address of nt!KiServiceTable
+    //syscall tables related info
+    ULONG KiServiceLimit;
+    ULONG W32pServiceLimit;
     ULONG_PTR KiServiceTableAddress;
+    ULONG_PTR W32pServiceTableAddress;
+    ULONG_PTR KeServiceDescriptorTableShadow;
 
     //system range start
     ULONG_PTR SystemRangeStart;
@@ -105,8 +109,8 @@ ULONG g_NtBuildNumber;
 
 typedef struct _KLDBG {
     SYSDBG_COMMAND SysDbgRequest;
-    PVOID OutputBuffer;
-    DWORD OutputBufferSize;
+    PVOID Buffer;
+    DWORD BufferSize;
 }KLDBG, *PKLDBG;
 
 typedef struct _OBJINFO {
@@ -217,6 +221,14 @@ POBJREF ObCollectionFindByAddress(
 PVOID kdQueryIopInvalidDeviceRequest(
     VOID);
 
+BOOL kdFindKiServiceTables(
+    _In_ ULONG_PTR MappedImageBase,
+    _In_ ULONG_PTR KernelImageBase,
+    _Out_opt_ ULONG_PTR *KiServiceTablePtr,
+    _Out_opt_ ULONG *KiServiceLimit,
+    _Out_opt_ ULONG_PTR *W32pServiceTable,
+    _Out_opt_ ULONG *W32pServiceLimit);
+
 BOOL kdReadSystemMemory(
     _In_    ULONG_PTR Address,
     _Inout_ PVOID Buffer,
@@ -240,3 +252,8 @@ BOOL kdIsDebugBoot(
 
 VOID kdShutdown(
     VOID);
+
+VOID kdShowError(
+    _In_ ULONG InputBufferLength,
+    _In_ NTSTATUS Status,
+    _In_ PIO_STATUS_BLOCK Iosb);

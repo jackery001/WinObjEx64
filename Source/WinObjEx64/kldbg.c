@@ -4,9 +4,9 @@
 *
 *  TITLE:       KLDBG.C, based on KDSubmarine by Evilcry
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  MINIMUM SUPPORTED OS WINDOWS 7
 *
@@ -54,17 +54,23 @@ BYTE LeaPattern_PNS[] = {
     0x48, 0x8d, 0x05
 };
 
-//KiSystemServiceStartPattern signature
+//KiSystemServiceStartPattern(KiSystemServiceRepeat) signature
 
 BYTE  KiSystemServiceStartPattern[] = { 0x8B, 0xF8, 0xC1, 0xEF, 0x07, 0x83, 0xE7, 0x20, 0x25, 0xFF, 0x0F, 0x00, 0x00 };
 
 //
 // lea r10, KeServiceDescriptorTable
 //
-BYTE LeaPattern_KiServiceStart[] = {
+BYTE LeaPattern_KeServiceDescriptorTable[] = {
     0x4c, 0x8d, 0x15
 };
 
+//
+// lea r11, KeServiceDescriptorTableShadow
+//
+BYTE LeaPattern_KeServiceDescriptorTableShadow[] = {
+    0x4c, 0x8d, 0x1d
+};
 
 #define MM_SYSTEM_RANGE_START_7 0xFFFF080000000000
 #define MM_SYSTEM_RANGE_START_8 0xFFFF800000000000
@@ -523,35 +529,25 @@ PVOID ObDumpAlpcPortObjectVersionAware(
         ObjectSize = sizeof(ALPC_PORT_9600);
         ObjectVersion = 3;
         break;
-    case 10240:
-    case 10586:
-    case 14393:
-    case 15063:
-    case 16299:
-    case 17134:
-    case 17763:
+    default:
         ObjectSize = sizeof(ALPC_PORT_10240);
         ObjectVersion = 4;
         break;
-    default:
-        break;
     }
 
-    if (ObjectSize) {
-        ObjectSize = ALIGN_UP_BY(ObjectSize, PAGE_SIZE);
-        ObjectBuffer = supVirtualAlloc(ObjectSize);
-        if (ObjectBuffer == NULL) {
-            return NULL;
-        }
+    ObjectSize = ALIGN_UP_BY(ObjectSize, PAGE_SIZE);
+    ObjectBuffer = supVirtualAlloc(ObjectSize);
+    if (ObjectBuffer == NULL) {
+        return NULL;
+    }
 
-        if (!kdReadSystemMemory(
-            ObjectAddress,
-            ObjectBuffer,
-            (ULONG)ObjectSize))
-        {
-            supVirtualFree(ObjectBuffer);
-            return NULL;
-        }
+    if (!kdReadSystemMemory(
+        ObjectAddress,
+        ObjectBuffer,
+        (ULONG)ObjectSize))
+    {
+        supVirtualFree(ObjectBuffer);
+        return NULL;
     }
 
     if (Size)
@@ -692,22 +688,30 @@ UCHAR ObpFindHeaderCookie(
             c = 0;
             RtlSecureZeroMemory(&hs, sizeof(hs));
             do {
-                //movzx   ecx, byte ptr cs:ObHeaderCookie
-                if ((*(PBYTE)(Address + c) == 0x0f) &&
-                    (*(PBYTE)(Address + c + 1) == 0xb6) &&
-                    (*(PBYTE)(Address + c + 2) == 0x0d))
-                {
-                    rel = *(PLONG)(Address + c + 3);
-                    break;
-                }
-
                 hde64_disasm((void*)(Address + c), &hs);
                 if (hs.flags & F_ERROR)
                     break;
+
+                if (hs.len == 7) {
+
+                    //movzx   ecx, byte ptr cs:ObHeaderCookie
+                    if ((*(PBYTE)(Address + c) == 0x0f) &&
+                        (*(PBYTE)(Address + c + 1) == 0xb6) &&
+                        (*(PBYTE)(Address + c + 2) == 0x0d))
+                    {
+                        rel = *(PLONG)(Address + c + 3);
+                        break;
+                    }
+                }
+
                 c += hs.len;
 
             } while (c < 256);
-            KmAddress = Address + c + 7 + rel;
+
+            if (rel == 0)
+                break;
+
+            KmAddress = Address + c + hs.len + rel;
 
             KmAddress = KernelImageBase + KmAddress - MappedImageBase;
 
@@ -734,7 +738,7 @@ UCHAR ObpFindHeaderCookie(
 }
 
 /*
-* ObFindObpPrivateNamespaceLookupTable2
+* ObFindPrivateNamespaceLookupTable2
 *
 * Purpose:
 *
@@ -745,7 +749,7 @@ UCHAR ObpFindHeaderCookie(
 * OS dependent, Windows 10 (14393 - 17763).
 *
 */
-PVOID ObFindObpPrivateNamespaceLookupTable2(
+PVOID ObFindPrivateNamespaceLookupTable2(
     _In_ ULONG_PTR MappedImageBase,
     _In_ ULONG_PTR KernelImageBase
 )
@@ -836,23 +840,27 @@ PVOID ObFindObpPrivateNamespaceLookupTable2(
         RtlSecureZeroMemory(&hs, sizeof(hs));
 
         do {
-            //lea rax, PspHostSiloGlobals
-            if ((*(PBYTE)(ScanPtr + c) == MatchingPattern[0]) &&
-                (*(PBYTE)(ScanPtr + c + 1) == MatchingPattern[1]) &&
-                (*(PBYTE)(ScanPtr + c + 2) == MatchingPattern[2]))
-            {
-                rel = *(PLONG)(ScanPtr + c + 3);
-                break;
-            }
-
             hde64_disasm((void*)(ScanPtr + c), &hs);
             if (hs.flags & F_ERROR)
                 break;
+
+            if (hs.len == 7) { //lea rax, PspHostSiloGlobals
+                if ((*(PBYTE)(ScanPtr + c) == MatchingPattern[0]) &&
+                    (*(PBYTE)(ScanPtr + c + 1) == MatchingPattern[1]) &&
+                    (*(PBYTE)(ScanPtr + c + 2) == MatchingPattern[2]))
+                {
+                    rel = *(PLONG)(ScanPtr + c + 3);
+                    break;
+                }
+            }
             c += hs.len;
 
         } while (c < 64);
 
-        ScanPtr = ScanPtr + c + 7 + rel;
+        if (rel == 0)
+            break;
+
+        ScanPtr = ScanPtr + c + hs.len + rel;
         ScanPtr = KernelImageBase + ScanPtr - MappedImageBase;
 
         if (!kdAddressInNtOsImage((PVOID)ScanPtr))
@@ -885,14 +893,14 @@ PVOID ObFindObpPrivateNamespaceLookupTable2(
 }
 
 /*
-* ObFindObpPrivateNamespaceLookupTable
+* ObFindPrivateNamespaceLookupTable
 *
 * Purpose:
 *
 * Locate and return address of private namespace table.
 *
 */
-PVOID ObFindObpPrivateNamespaceLookupTable(
+PVOID ObFindPrivateNamespaceLookupTable(
     _In_ ULONG_PTR MappedImageBase,
     _In_ ULONG_PTR KernelImageBase
 )
@@ -910,7 +918,7 @@ PVOID ObFindObpPrivateNamespaceLookupTable(
     ULONG      SectionSize;
 
     if (g_NtBuildNumber > 10586)
-        return ObFindObpPrivateNamespaceLookupTable2(
+        return ObFindPrivateNamespaceLookupTable2(
             MappedImageBase,
             KernelImageBase);
 
@@ -962,22 +970,28 @@ PVOID ObFindObpPrivateNamespaceLookupTable(
         MatchingPattern = LeaPattern_PNS;
 
         do {
-            if ((*(PBYTE)(ScanPtr + c) == MatchingPattern[0]) &&
-                (*(PBYTE)(ScanPtr + c + 1) == MatchingPattern[1]) &&
-                (*(PBYTE)(ScanPtr + c + 2) == MatchingPattern[2]))
-            {
-                rel = *(PLONG)(ScanPtr + c + 3);
-                break;
-            }
-
             hde64_disasm((void*)(ScanPtr + c), &hs);
             if (hs.flags & F_ERROR)
                 break;
+
+            if (hs.len == 7) {
+                if ((*(PBYTE)(ScanPtr + c) == MatchingPattern[0]) &&
+                    (*(PBYTE)(ScanPtr + c + 1) == MatchingPattern[1]) &&
+                    (*(PBYTE)(ScanPtr + c + 2) == MatchingPattern[2]))
+                {
+                    rel = *(PLONG)(ScanPtr + c + 3);
+                    break;
+                }
+            }
+
             c += hs.len;
 
         } while (c < 128);
 
-        ScanPtr = ScanPtr + c + 7 + rel;
+        if (rel == 0)
+            break;
+
+        ScanPtr = ScanPtr + c + hs.len + rel;
         ScanPtr = KernelImageBase + ScanPtr - MappedImageBase;
 
         if (!kdAddressInNtOsImage((PVOID)ScanPtr))
@@ -989,113 +1003,167 @@ PVOID ObFindObpPrivateNamespaceLookupTable(
 }
 
 /*
-* kdFindKiServiceTable
+* kdFindServiceTables
 *
 * Purpose:
 *
-* Find system service table pointer from ntoskrnl image.
+* Find system service table pointers from ntoskrnl image.
 *
 */
-VOID kdFindKiServiceTable(
+BOOL kdFindKiServiceTables(
     _In_ ULONG_PTR MappedImageBase,
     _In_ ULONG_PTR KernelImageBase,
-    _Inout_ ULONG_PTR *KiServiceTablePtr,
-    _Inout_ ULONG *KiServiceLimit
+    _Out_opt_ ULONG_PTR *KiServiceTablePtr,
+    _Out_opt_ ULONG *KiServiceLimit,
+    _Out_opt_ ULONG_PTR *W32pServiceTable,
+    _Out_opt_ ULONG *W32pServiceLimit
 )
 {
-    BOOL         cond = FALSE;
+    BOOL         cond = FALSE, bResult = FALSE, bS1, bS2;
     UINT         c, SignatureSize;
     LONG         rel = 0;
     ULONG        SectionSize;
-    ULONG_PTR    Address = 0, SectionBase = 0;
+    ULONG_PTR    LookupAddress = 0, Address = 0, SectionBase = 0;
     hde64s       hs;
 
     PBYTE        MatchingPattern;
 
-    KSERVICE_TABLE_DESCRIPTOR KeSystemDescriptorTable;
+    KSERVICE_TABLE_DESCRIPTOR ServiceTableDescriptor[2];
 
     __try {
 
         do {
-            //
-            // Locate .text image section.
-            //
-            SectionBase = (ULONG_PTR)supLookupImageSectionByName(
-                TEXT_SECTION,
-                TEXT_SECTION_LEGNTH,
-                (PVOID)MappedImageBase,
-                &SectionSize);
-
-            if ((SectionBase == 0) || (SectionSize == 0))
-                break;
-
-            SignatureSize = sizeof(KiSystemServiceStartPattern);
-            if (SignatureSize > SectionSize)
-                break;
 
             //
-            // Find KiSystemServiceStart signature.
+            // If KeServiceDescriptorTableShadow is not extracted then extract it.
             //
-            Address = (ULONG_PTR)supFindPattern(
-                (PBYTE)SectionBase,
-                SectionSize,
-                (PBYTE)KiSystemServiceStartPattern,
-                SignatureSize);
+            if (g_kdctx.KeServiceDescriptorTableShadow == 0) {
 
-            if (Address == 0)
-                break;
+                //
+                // Locate .text image section.
+                //
+                SectionBase = (ULONG_PTR)supLookupImageSectionByName(
+                    TEXT_SECTION,
+                    TEXT_SECTION_LEGNTH,
+                    (PVOID)MappedImageBase,
+                    &SectionSize);
 
-            Address += SignatureSize;
-
-            c = 0;
-            RtlSecureZeroMemory(&hs, sizeof(hs));
-
-            MatchingPattern = LeaPattern_KiServiceStart;
-
-            do {
-                if ((*(PBYTE)(Address + c) == MatchingPattern[0]) &&
-                    (*(PBYTE)(Address + c + 1) == MatchingPattern[1]) &&
-                    (*(PBYTE)(Address + c + 2) == MatchingPattern[2]))
-                {
-                    rel = *(PLONG)(Address + c + 3);
+                if ((SectionBase == 0) || (SectionSize == 0))
                     break;
-                }
 
-                hde64_disasm((void*)(Address + c), &hs);
-                if (hs.flags & F_ERROR)
+                SignatureSize = sizeof(KiSystemServiceStartPattern);
+                if (SignatureSize > SectionSize)
                     break;
-                c += hs.len;
 
-            } while (c < 128);
+                //
+                // Find KiSystemServiceStart signature.
+                //
+                LookupAddress = (ULONG_PTR)supFindPattern(
+                    (PBYTE)SectionBase,
+                    SectionSize,
+                    (PBYTE)KiSystemServiceStartPattern,
+                    SignatureSize);
 
-            Address = Address + c + 7 + rel;
-            Address = KernelImageBase + Address - MappedImageBase;
+                if (LookupAddress == 0)
+                    break;
+
+                LookupAddress += SignatureSize;
+
+                //
+                // Find KeServiceDescriptorTableShadow.
+                //
+                Address = LookupAddress;
+
+                c = 0;
+                rel = 0;
+                RtlSecureZeroMemory(&hs, sizeof(hs));
+
+                MatchingPattern = LeaPattern_KeServiceDescriptorTableShadow;
+
+                do {
+                    hde64_disasm((void*)(Address + c), &hs);
+                    if (hs.flags & F_ERROR)
+                        break;
+
+                    if (hs.len == 7) {
+                        if ((*(PBYTE)(Address + c) == MatchingPattern[0]) &&
+                            (*(PBYTE)(Address + c + 1) == MatchingPattern[1]) &&
+                            (*(PBYTE)(Address + c + 2) == MatchingPattern[2]))
+                        {
+                            rel = *(PLONG)(Address + c + 3);
+                            break;
+                        }
+                    }
+
+                    c += hs.len;
+
+                } while (c < 128);
+
+                if (rel == 0)
+                    break;
+
+                //
+                // Dump ntos syscall table info.
+                //
+                Address = Address + c + hs.len + rel;
+                Address = KernelImageBase + Address - MappedImageBase;
+
+                g_kdctx.KeServiceDescriptorTableShadow = Address;
+
+            }
+            else {
+                Address = g_kdctx.KeServiceDescriptorTableShadow;
+            }
 
             if (!kdAddressInNtOsImage((PVOID)Address))
                 break;
 
-            RtlSecureZeroMemory(&KeSystemDescriptorTable,
-                sizeof(KeSystemDescriptorTable));
+            RtlSecureZeroMemory(&ServiceTableDescriptor,
+                sizeof(ServiceTableDescriptor));
 
             if (!kdReadSystemMemoryEx(
                 Address,
-                &KeSystemDescriptorTable,
-                sizeof(KeSystemDescriptorTable),
+                &ServiceTableDescriptor,
+                sizeof(ServiceTableDescriptor),
                 NULL))
             {
                 break;
             }
 
-            *KiServiceLimit = KeSystemDescriptorTable.Limit;
-            *KiServiceTablePtr = KeSystemDescriptorTable.Base;
+            if ((KiServiceLimit != NULL) && (KiServiceTablePtr != NULL)) {
+
+                *KiServiceLimit = ServiceTableDescriptor[0].Limit;
+                *KiServiceTablePtr = ServiceTableDescriptor[0].Base;
+
+                bS1 = ((ServiceTableDescriptor[0].Base != 0) &&
+                    (ServiceTableDescriptor[0].Limit));
+            }
+            else {
+                bS1 = TRUE;
+            }
+
+            if ((W32pServiceLimit != NULL) && (W32pServiceTable != NULL)) {
+
+                *W32pServiceLimit = ServiceTableDescriptor[1].Limit;
+                *W32pServiceTable = ServiceTableDescriptor[1].Base;
+
+                bS2 = ((ServiceTableDescriptor[1].Base != 0) &&
+                    (ServiceTableDescriptor[1].Limit));
+
+            }
+            else {
+                bS2 = TRUE;
+            }
+
+            bResult = (bS1) && (bS2);
 
         } while (cond);
 
     }
     __except (exceptFilter(GetExceptionCode(), GetExceptionInformation())) {
-        return;
+        return FALSE;
     }
-    return;
+    return bResult;
 }
 
 /*
@@ -1211,8 +1279,8 @@ LPWSTR ObQueryNameString(
 *
 * Purpose:
 *
-* Read object related data from kernel to local user copy.
-* Returned object must be freed wtih supHeapFree when no longer needed.
+*   Read object related data from kernel to local user copy.
+*   Returned object must be freed wtih supHeapFree when no longer needed.
 *
 * Parameters:
 *
@@ -2114,12 +2182,12 @@ BOOL ObCollectionCreate(
         }
         else {
 
-            if (g_kdctx.ObpPrivateNamespaceLookupTable != 0) {
+            if (g_kdctx.PrivateNamespaceLookupTable != NULL) {
 
                 bResult = ObpWalkPrivateNamespaceTable(
                     &Collection->ListHead,
                     Collection->Heap,
-                    (ULONG_PTR)g_kdctx.ObpPrivateNamespaceLookupTable);
+                    (ULONG_PTR)g_kdctx.PrivateNamespaceLookupTable);
             }
             else {
                 SetLastError(ERROR_INTERNAL_ERROR);
@@ -2323,6 +2391,34 @@ BOOL kdIsDebugBoot(
 }
 
 /*
+* kdShowError
+*
+* Purpose:
+*
+* Display details about failed driver call.
+*
+*/
+VOID kdShowError(
+    _In_ ULONG InputBufferLength,
+    _In_ NTSTATUS Status,
+    _In_ PIO_STATUS_BLOCK Iosb
+)
+{
+    WCHAR szBuffer[512];
+
+    _strcpy(szBuffer, TEXT("NtDeviceIoControlFile = 0x"));
+    ultohex(Status, _strend(szBuffer));
+    _strcat(szBuffer, TEXT("\r\nIoStatusBlock.Status = 0x"));
+    ultohex(Iosb->Status, _strend(szBuffer));
+    _strcat(szBuffer, TEXT("\r\nIoStatusBlock.Information = 0x"));
+    u64tohex(Iosb->Information, _strend(szBuffer));
+    _strcat(szBuffer, TEXT("\r\n\nInputBufferLength = 0x"));
+    ultohex(InputBufferLength, _strend(szBuffer));
+
+    MessageBox(GetDesktopWindow(), szBuffer, NULL, MB_TOPMOST | MB_ICONERROR);
+}
+
+/*
 * kdReadSystemMemoryEx
 *
 * Purpose:
@@ -2338,10 +2434,10 @@ BOOL kdReadSystemMemoryEx(
     _Out_opt_ PULONG NumberOfBytesRead
 )
 {
-    BOOL           bResult = FALSE;
-    DWORD          bytesIO = 0;
-    KLDBG          kldbg;
-    SYSDBG_VIRTUAL dbgRequest;
+    NTSTATUS        status;
+    KLDBG           kldbg;
+    IO_STATUS_BLOCK iost;
+    SYSDBG_VIRTUAL  dbgRequest;
 
     if (g_kdctx.hDevice == NULL)
         return FALSE;
@@ -2352,30 +2448,94 @@ BOOL kdReadSystemMemoryEx(
     if (Address < g_kdctx.SystemRangeStart)
         return FALSE;
 
-    // fill parameters for KdSystemDebugControl
+    //
+    // Fill parameters for KdSystemDebugControl.
+    //
     dbgRequest.Address = (PVOID)Address;
     dbgRequest.Buffer = Buffer;
     dbgRequest.Request = BufferSize;
 
-    // fill parameters for kldbgdrv ioctl
+    //
+    // Fill parameters for kldbgdrv ioctl.
+    //
     kldbg.SysDbgRequest = SysDbgReadVirtual;
-    kldbg.OutputBuffer = &dbgRequest;
-    kldbg.OutputBufferSize = sizeof(SYSDBG_VIRTUAL);
+    kldbg.Buffer = &dbgRequest;
+    kldbg.BufferSize = sizeof(SYSDBG_VIRTUAL);
 
-    bResult = DeviceIoControl(
+    iost.Information = 0;
+    iost.Status = 0;
+
+    status = NtDeviceIoControlFile(
         g_kdctx.hDevice,
+        NULL,
+        NULL,
+        NULL,
+        &iost,
         IOCTL_KD_PASS_THROUGH,
         &kldbg,
         sizeof(kldbg),
         &dbgRequest,
-        sizeof(dbgRequest),
-        &bytesIO,
-        NULL);
+        sizeof(dbgRequest));
 
-    if (NumberOfBytesRead)
-        *NumberOfBytesRead = bytesIO;
+    if (status == STATUS_PENDING) {
 
-    return bResult;
+        status = NtWaitForSingleObject(
+            g_kdctx.hDevice,
+            FALSE,
+            NULL);
+
+        if (NT_SUCCESS(status))
+            status = iost.Status;
+    }
+
+    if (NT_SUCCESS(status)) {
+
+        if (NumberOfBytesRead)
+            *NumberOfBytesRead = (ULONG)iost.Information;
+
+        return TRUE;
+    }
+    else {
+        //
+        // We don't need this information in case of error.
+        //
+        if (!NT_ERROR(status)) {
+            if (NumberOfBytesRead)
+                *NumberOfBytesRead = (ULONG)iost.Information;
+        }
+
+        if (g_kdctx.ShowKdError)
+            kdShowError(BufferSize, status, &iost);
+        else
+            SetLastError(RtlNtStatusToDosError(status));
+
+        return FALSE;
+    }
+}
+
+/*
+* kdWriteSystemMemory
+*
+* Purpose:
+*
+* Wrapper around SysDbgWriteVirtual request to the KLDBGDRV
+*
+* NOT IMPLEMENTED
+*
+*/
+_Success_(return == TRUE)
+BOOL kdWriteSystemMemory(
+    _In_ ULONG_PTR Address,
+    _In_ PVOID Buffer,
+    _In_ ULONG BufferSize,
+    _Out_opt_ PULONG NumberOfBytesWrite
+)
+{
+    UNREFERENCED_PARAMETER(Address);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(BufferSize);
+    UNREFERENCED_PARAMETER(NumberOfBytesWrite);
+    return FALSE;
 }
 
 /*
@@ -2501,6 +2661,8 @@ DWORD WINAPI kdQuerySystemInformation(
         if (MappedKernel == NULL)
             break;
 
+        Context->NtOsImageMap = MappedKernel;
+
         //
         // Locate and remember ObHeaderCookie.
         //
@@ -2513,18 +2675,9 @@ DWORD WINAPI kdQuerySystemInformation(
         }
 
         //
-        // Find KiServiceTable.
-        //
-        kdFindKiServiceTable(
-            (ULONG_PTR)MappedKernel,
-            (ULONG_PTR)Context->NtOsBase,
-            &Context->KiServiceTableAddress,
-            &Context->KiServiceLimit);
-
-        //
         // Find namespace table.
         //
-        Context->ObpPrivateNamespaceLookupTable = ObFindObpPrivateNamespaceLookupTable(
+        Context->PrivateNamespaceLookupTable = ObFindPrivateNamespaceLookupTable(
             (ULONG_PTR)MappedKernel,
             (ULONG_PTR)Context->NtOsBase);
 
@@ -2532,9 +2685,6 @@ DWORD WINAPI kdQuerySystemInformation(
 
     } while (cond);
 
-    if (MappedKernel != NULL) {
-        FreeLibrary(MappedKernel);
-    }
     if (miSpace != NULL) {
         supHeapFree(miSpace);
     }
@@ -2559,7 +2709,6 @@ BOOL __forceinline kdAddressInNtOsImage(
         g_kdctx.NtOsSize);
 }
 
-
 /*
 * kdInit
 *
@@ -2575,6 +2724,8 @@ VOID kdInit(
     WCHAR szDrvPath[MAX_PATH * 2];
 
     RtlSecureZeroMemory(&g_kdctx, sizeof(g_kdctx));
+
+    g_kdctx.ShowKdError = TRUE;
 
     InitializeListHead(&g_kdctx.ObCollection.ListHead);
 
@@ -2662,7 +2813,7 @@ VOID kdInit(
     }
 
     //
-    // Query global variable and dump object directory if driver support available.
+    // Query global variables.
     //
     if (g_kdctx.hDevice != NULL) {
 
@@ -2670,13 +2821,7 @@ VOID kdInit(
 
         RtlInitializeCriticalSection(&g_kdctx.ListLock);
 
-        g_kdctx.hThreadWorker = CreateThread(
-            NULL,
-            0,
-            kdQuerySystemInformation,
-            &g_kdctx,
-            0,
-            NULL);
+        kdQuerySystemInformation(&g_kdctx);
     }
 }
 
@@ -2698,18 +2843,6 @@ VOID kdShutdown(
 
     if (g_kdctx.hDevice == NULL)
         return;
-    //
-    // If there is a valid ThreadWorker, wait for it shutdown a bit.
-    //
-    if (g_kdctx.hThreadWorker) {
-        //
-        // On wait timeout terminate worker.
-        //
-        if (WaitForSingleObject(g_kdctx.hThreadWorker, 5000) == WAIT_TIMEOUT)
-            TerminateThread(g_kdctx.hThreadWorker, 0);
-        CloseHandle(g_kdctx.hThreadWorker);
-        g_kdctx.hThreadWorker = NULL;
-    }
 
     CloseHandle(g_kdctx.hDevice);
     g_kdctx.hDevice = NULL;
@@ -2732,4 +2865,7 @@ VOID kdShutdown(
         _strcat(szDrvPath, KLDBGDRVSYS);
         DeleteFile(szDrvPath);
     }
+
+    if (g_kdctx.NtOsImageMap)
+        FreeLibrary(g_kdctx.NtOsImageMap);
 }

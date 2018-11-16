@@ -4,9 +4,9 @@
 *
 *  TITLE:       SUP.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        29 Oct 2018
+*  DATE:        07 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -64,10 +64,13 @@ PVOID supHeapAlloc(
     _In_ SIZE_T Size)
 {
     LONG x;
+    DWORD LastError;
     PVOID Buffer = NULL;
     WCHAR szBuffer[100];
 
     Buffer = RtlAllocateHeap(g_WinObj.Heap, HEAP_ZERO_MEMORY, Size);
+    LastError = GetLastError();
+
     if (Buffer) {
         x = InterlockedIncrement((PLONG)&g_cHeapAlloc);
 
@@ -87,6 +90,8 @@ PVOID supHeapAlloc(
         _strcat(szBuffer, L"FAILED \r\n");
         OutputDebugString(szBuffer);
     }
+
+    SetLastError(LastError);
     return Buffer;
 }
 #endif
@@ -110,9 +115,14 @@ BOOL supHeapFree(
     _In_ PVOID Memory)
 {
     LONG x;
+    BOOL bSuccess;
+    DWORD LastError;
     WCHAR szBuffer[100];
 
-    if (RtlFreeHeap(g_WinObj.Heap, 0, Memory)) {
+    bSuccess = RtlFreeHeap(g_WinObj.Heap, 0, Memory);
+    LastError = GetLastError();
+
+    if (bSuccess) {
         x = InterlockedDecrement((PLONG)&g_cHeapAlloc);
         _strcpy(szBuffer, L"Free buffer=0x");
         u64tohex((ULONG_PTR)Memory, _strend(szBuffer));
@@ -123,15 +133,16 @@ BOOL supHeapFree(
         ultostr(x, _strend(szBuffer));
         _strcat(szBuffer, L"\r\n");
         OutputDebugString(szBuffer);
-        return TRUE;
     }
     else {
         _strcpy(szBuffer, L"Free buffer=0x");
         u64tohex((ULONG_PTR)Memory, _strend(szBuffer));
         _strcat(szBuffer, L" FAILED \r\n");
         OutputDebugString(szBuffer);
-        return FALSE;
     }
+
+    SetLastError(LastError);
+    return bSuccess;
 }
 #endif
 
@@ -151,7 +162,8 @@ PVOID supVirtualAlloc(
     SIZE_T size;
 
     size = Size;
-    Status = NtAllocateVirtualMemory(NtCurrentProcess(),
+    Status = NtAllocateVirtualMemory(
+        NtCurrentProcess(),
         &Buffer,
         0,
         &size,
@@ -162,6 +174,8 @@ PVOID supVirtualAlloc(
         RtlSecureZeroMemory(Buffer, size);
         return Buffer;
     }
+
+    SetLastError(RtlNtStatusToDosError(Status));
     return NULL;
 }
 
@@ -180,11 +194,14 @@ BOOL supVirtualFree(
     SIZE_T size = 0;
 
     if (Memory) {
-        Status = NtFreeVirtualMemory(NtCurrentProcess(),
+        Status = NtFreeVirtualMemory(
+            NtCurrentProcess(),
             &Memory,
             &size,
             MEM_RELEASE);
     }
+
+    SetLastError(RtlNtStatusToDosError(Status));
     return NT_SUCCESS(Status);
 }
 
@@ -321,79 +338,50 @@ BOOL supQueryObjectFromHandle(
 }
 
 /*
-* supxSyscallTableEntryToAddress
-*
-* Purpose:
-*
-* Translate KiServiceTable entry to the real function address.
-*
-*/
-ULONG_PTR supxSyscallTableEntryToAddress(
-    _In_ PULONG KiServiceTable,
-    _In_ ULONG ServiceId,
-    _In_ ULONG_PTR KiServiceTablePtr
-)
-{
-    LONG32 Offset;
-
-    Offset = ((LONG32)KiServiceTable[ServiceId] >> 4);
-    return KiServiceTablePtr + Offset;
-}
-
-/*
 * supDumpSyscallTableConverted
 *
 * Purpose:
 *
-* Read KiServiceTable and convert it.
+* Read service table and convert it.
 *
 */
 BOOL supDumpSyscallTableConverted(
-    _In_ PKLDBGCONTEXT Context,
-    _Inout_ PUTable *Table
+    _In_ ULONG_PTR ServiceTableAddress,
+    _In_ ULONG ServiceLimit,
+    _Out_ PUTable *Table
 )
 {
     ULONG   ServiceId, memIO, bytesRead;
     BOOL    bResult = FALSE;
-    PULONG  KiServiceTableDumped = NULL;
+    PULONG  ServiceTableDumped = NULL;
     PUTable ConvertedTable;
 
-    __try {
+    LONG32 Offset;
 
-        if ((Context->KiServiceTableAddress == 0) || (Context->KiServiceLimit == 0))
-            __leave;
-
-        memIO = (ULONG)(Context->KiServiceLimit * sizeof(ULONG_PTR));
-        KiServiceTableDumped = (PULONG)supHeapAlloc(memIO);
-        if (KiServiceTableDumped == NULL)
-            __leave;
-
+    memIO = ServiceLimit * sizeof(ULONG);
+    
+    ServiceTableDumped = (PULONG)supHeapAlloc(memIO);
+    if (ServiceTableDumped) {
         bytesRead = 0;
-        if (!kdReadSystemMemoryEx(Context->KiServiceTableAddress,
-            (PVOID)KiServiceTableDumped,
+        if (kdReadSystemMemoryEx(
+            ServiceTableAddress,
+            (PVOID)ServiceTableDumped,
             memIO,
             &bytesRead))
         {
-            __leave;
-        }
+            ConvertedTable = (PULONG_PTR)supHeapAlloc(ServiceLimit * sizeof(ULONG_PTR));
 
-        if (bytesRead > 16) {
-            ConvertedTable = (PULONG_PTR)supHeapAlloc(bytesRead);
             if (ConvertedTable) {
+
                 *Table = ConvertedTable;
-                for (ServiceId = 0; ServiceId < Context->KiServiceLimit; ServiceId++) {
-                    ConvertedTable[ServiceId] = supxSyscallTableEntryToAddress(KiServiceTableDumped,
-                        ServiceId,
-                        Context->KiServiceTableAddress);
+                for (ServiceId = 0; ServiceId < ServiceLimit; ServiceId++) {
+                    Offset = ((LONG32)ServiceTableDumped[ServiceId] >> 4);
+                    ConvertedTable[ServiceId] = ServiceTableAddress + Offset;
                 }
                 bResult = TRUE;
             }
         }
-    }
-    __finally {
-        if (KiServiceTableDumped != NULL) {
-            supHeapFree(KiServiceTableDumped);
-        }
+        supHeapFree(ServiceTableDumped);
     }
     return bResult;
 }
@@ -589,6 +577,64 @@ VOID supSetWaitCursor(
 {
     ShowCursor(fSet);
     SetCursor(LoadCursor(NULL, fSet ? IDC_WAIT : IDC_ARROW));
+}
+
+/*
+* supxLoadBannerDialog
+*
+* Purpose:
+*
+* Wait window banner dialog procedure.
+*
+*/
+INT_PTR CALLBACK supxLoadBannerDialog(
+    _In_ HWND   hwndDlg,
+    _In_ UINT   uMsg,
+    _In_ WPARAM wParam,
+    _In_ LPARAM lParam
+)
+{
+    UNREFERENCED_PARAMETER(wParam);
+
+    switch (uMsg) {
+
+    case WM_INITDIALOG:
+        supCenterWindow(hwndDlg);
+
+        if (lParam) {
+            SetDlgItemText(hwndDlg, IDC_LOADING_MSG, (LPWSTR)lParam);
+        }
+        break;
+
+    case WM_CLOSE:
+        DestroyWindow(hwndDlg);
+        break;
+
+    default:
+        break;
+    }
+    return 0;
+}
+
+/*
+* supDisplayLoadBanner
+*
+* Purpose:
+*
+* Display borderless banner window to inform user about operation that need some wait.
+*
+*/
+HWND supDisplayLoadBanner(
+    _In_ HWND hwndParent,
+    _In_ LPWSTR lpMessage
+)
+{
+    return CreateDialogParam(
+        g_WinObj.hInstance,
+        MAKEINTRESOURCE(IDD_DIALOG_LOAD),
+        hwndParent,
+        supxLoadBannerDialog,
+        (LPARAM)lpMessage);
 }
 
 /*
@@ -883,15 +929,15 @@ UINT supGetObjectNameIndexByTypeIndex(
             if (g_NtBuildNumber >= 9200) {
                 ObjectTypeEntry.Ref = (PBYTE)pObject;
                 if (ObjectTypeEntry.u1.ObjectV2->TypeIndex == Index) {
-                    
+
                     return ObManagerGetIndexByTypeName(
                         pObject->TypeName.Buffer);
-                
+
                 }
             }
             else {
                 if (i + 2 == Index) {
-                    
+
                     return ObManagerGetIndexByTypeName(
                         pObject->TypeName.Buffer);
 
@@ -1300,7 +1346,8 @@ VOID supShutdown(
     if (g_pObjectTypesInfo) supHeapFree(g_pObjectTypesInfo);
     if (g_lpKnownDlls32) supHeapFree(g_lpKnownDlls32);
     if (g_lpKnownDlls64) supHeapFree(g_lpKnownDlls64);
-    if (g_SdtTable) supHeapFree(g_SdtTable);
+    if (g_pSDT) supHeapFree(g_pSDT);
+    if (g_pSDTShadow) supHeapFree(g_pSDTShadow);
 }
 
 /*
@@ -1484,9 +1531,12 @@ BOOL supQueryProcessNameByEPROCESS(
 )
 {
     BOOL bFound = FALSE;
-    ULONG NextEntryDelta = 0;
-    ULONG_PTR ObjectAddress = 0;
+    DWORD  CurrentProcessId = GetCurrentProcessId();
+    ULONG NextEntryDelta = 0, NumberOfProcesses = 0, i, j, ProcessListCount = 0;
     HANDLE hProcess = NULL;
+    OBEX_PROCESS_LOOKUP_ENTRY *SavedProcessList;
+    PSYSTEM_HANDLE_INFORMATION_EX pHandles;
+
     union {
         PSYSTEM_PROCESSES_INFORMATION Processes;
         PBYTE ListRef;
@@ -1496,52 +1546,86 @@ BOOL supQueryProcessNameByEPROCESS(
 
     List.ListRef = ProcessList;
 
-
+    //
+    // Calculate process handle list size.
+    //
     do {
+
         List.ListRef += NextEntryDelta;
 
-        if (List.Processes->ThreadCount) {
-
-            //
-            // Bruteforce process list (could be slow).
-            //
-            //  1. Open each process.
-            //  2. Find exact handle object value for process.
-            //  3. Compare with object value we are looking for.
-            //
-            if (NT_SUCCESS(NtOpenProcess(
-                &hProcess,
-                PROCESS_QUERY_LIMITED_INFORMATION,
-                &obja,
-                &List.Processes->Threads[0].ClientId)))
-            {
-
-                if (supQueryObjectFromHandle(
-                    hProcess,
-                    &ObjectAddress,
-                    NULL))
-                {
-                    if (ObjectAddress == ValueOfEPROCESS) {
-                        _strncpy(
-                            Buffer,
-                            ccBuffer,
-                            List.Processes->ImageName.Buffer,
-                            List.Processes->ImageName.Length / sizeof(WCHAR));
-
-                        bFound = TRUE;
-                    }
-                }
-
-                NtClose(hProcess);
-            }
-        }
-
-        if (bFound)
-            break;
+        if (List.Processes->ThreadCount)
+            NumberOfProcesses += 1;
 
         NextEntryDelta = List.Processes->NextEntryDelta;
 
     } while (NextEntryDelta);
+
+    List.ListRef = ProcessList;
+
+    ProcessListCount = 0;
+    NextEntryDelta = 0;
+
+    //
+    // Build process handle list.
+    //
+    SavedProcessList = supHeapAlloc(NumberOfProcesses * sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
+    if (SavedProcessList) {
+
+        do {
+            List.ListRef += NextEntryDelta;
+
+            if (List.Processes->ThreadCount) {
+
+                if (NT_SUCCESS(NtOpenProcess(
+                    &hProcess,
+                    PROCESS_QUERY_LIMITED_INFORMATION,
+                    &obja,
+                    &List.Processes->Threads[0].ClientId)))
+                {
+                    SavedProcessList[ProcessListCount].hProcess = hProcess;
+                    SavedProcessList[ProcessListCount].EntryPtr = List.ListRef;
+                    ProcessListCount += 1;
+                }
+            }
+            NextEntryDelta = List.Processes->NextEntryDelta;
+        } while (NextEntryDelta);
+
+        //
+        // Lookup this handles in system handle list.
+        //
+        pHandles = (PSYSTEM_HANDLE_INFORMATION_EX)supGetSystemInfo(SystemExtendedHandleInformation);
+        if (pHandles) {
+            for (i = 0; i < pHandles->NumberOfHandles; i++)
+                if (pHandles->Handles[i].UniqueProcessId == (ULONG_PTR)CurrentProcessId) //current process id
+                    for (j = 0; j < ProcessListCount; j++)
+                        if (pHandles->Handles[i].HandleValue == (ULONG_PTR)SavedProcessList[j].hProcess) //same handle value
+                            if ((ULONG_PTR)pHandles->Handles[i].Object == ValueOfEPROCESS) { //save object value
+
+                                List.ListRef = SavedProcessList[j].EntryPtr;
+
+                                _strncpy(
+                                    Buffer,
+                                    ccBuffer,
+                                    List.Processes->ImageName.Buffer,
+                                    List.Processes->ImageName.Length / sizeof(WCHAR));
+
+                                bFound = TRUE;
+                                break;
+                            }
+
+            supHeapFree(pHandles);
+        }
+
+        //
+        // Destroy process handle list.
+        //
+        for (i = 0; i < ProcessListCount; i++) {
+            if (SavedProcessList[i].hProcess)
+                NtClose(SavedProcessList[i].hProcess);
+        }
+
+        supHeapFree(SavedProcessList);
+    }
 
     return bFound;
 }
@@ -1949,11 +2033,45 @@ BOOL supQueryWinstationDescription(
 }
 
 /*
+* supFindModuleEntryByName
+*
+* Purpose:
+*
+* Find Module entry for given name.
+*
+*/
+PVOID supFindModuleEntryByName(
+    _In_ PRTL_PROCESS_MODULES pModulesList,
+    _In_ LPCSTR ModuleName
+)
+{
+    ULONG i, c, off;
+    LPSTR pModuleName;
+
+    c = pModulesList->NumberOfModules;
+    if (c == 0) {
+        return NULL;
+    }
+
+    for (i = 0; i < c; i++) {
+        off = pModulesList->Modules[i].OffsetToFileName;
+        pModuleName = (LPSTR)&pModulesList->Modules[i].FullPathName[off];
+        if (pModuleName) {
+
+            if (_strcmpi_a(pModuleName, ModuleName) == 0)
+                return &pModulesList->Modules[i];
+
+        }
+    }
+    return NULL;
+}
+
+/*
 * supFindModuleEntryByAddress
 *
 * Purpose:
 *
-* Find Module Name for given Address.
+* Find Module Entry for given Address.
 *
 */
 ULONG supFindModuleEntryByAddress(
@@ -1980,7 +2098,6 @@ ULONG supFindModuleEntryByAddress(
     }
     return (ULONG)-1;
 }
-
 
 /*
 * supFindModuleNameByAddress
@@ -3304,7 +3421,7 @@ HANDLE supxGetSystemToken(
     HANDLE hObject = NULL;
     HANDLE hToken = NULL;
 
-    OBJECT_ATTRIBUTES obja;
+    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES(NULL, 0);
 
     union {
         PSYSTEM_PROCESSES_INFORMATION Processes;
@@ -3312,8 +3429,6 @@ HANDLE supxGetSystemToken(
     } List;
 
     List.ListRef = ProcessList;
-
-    InitializeObjectAttributes(&obja, NULL, 0, NULL, NULL);
 
     do {
 
@@ -3414,13 +3529,13 @@ BOOL supRunAsLocalSystem(
     do {
 
         if (hSystemToken == NULL) {
-            
+
             MessageBox(
-                hwndParent, 
+                hwndParent,
                 TEXT("No suitable system token found. Make sure you are running as administrator"),
-                PROGRAM_NAME, 
+                PROGRAM_NAME,
                 MB_ICONINFORMATION);
-            
+
             break;
         }
 
@@ -3562,7 +3677,7 @@ BOOL supRunAsLocalSystem(
 *
 * Purpose:
 *
-* Restart WinObjEx64 in local system account.
+* Return current process token value with TOKEN_QUERY access right.
 *
 */
 HANDLE supGetCurrentProcessToken(
@@ -3614,10 +3729,10 @@ PVOID supLookupImageSectionByName(
     //
     i = NtHeaders->FileHeader.NumberOfSections;
     while (i > 0) {
-        
+
         if (_strncmp_a(
-            (CHAR*)SectionTableEntry->Name, 
-            SectionName, 
+            (CHAR*)SectionTableEntry->Name,
+            SectionName,
             SectionNameLength) == 0)
         {
             bFound = TRUE;
@@ -3762,6 +3877,154 @@ INT supGetMaxOfTwoU64FromHex(
 }
 
 /*
+* supGetMaxOfTwoLongFromString
+*
+* Purpose:
+*
+* Returned value used in listview comparer functions.
+*
+*/
+INT supGetMaxOfTwoLongFromString(
+    _In_ HWND ListView,
+    _In_ LPARAM lParam1,
+    _In_ LPARAM lParam2,
+    _In_ LPARAM lParamSort,
+    _In_ BOOL Inverse
+)
+{
+    INT       nResult;
+    LPWSTR    lpItem1 = NULL, lpItem2 = NULL;
+    LONG_PTR  value1, value2;
+    WCHAR     szText[MAX_TEXT_CONVERSION_ULONG64 + 1];
+
+    RtlSecureZeroMemory(&szText, sizeof(szText));
+
+    lpItem1 = supGetItemText2(
+        ListView,
+        (INT)lParam1,
+        (INT)lParamSort,
+        szText,
+        MAX_TEXT_CONVERSION_ULONG64);
+
+    value1 = strtoi64(lpItem1);
+
+    RtlSecureZeroMemory(&szText, sizeof(szText));
+
+    lpItem2 = supGetItemText2(
+        ListView,
+        (INT)lParam2,
+        (INT)lParamSort,
+        szText,
+        MAX_TEXT_CONVERSION_ULONG64);
+
+    value2 = strtoi64(lpItem2);
+
+    if (Inverse)
+        nResult = value1 < value2;
+    else
+        nResult = value1 > value2;
+
+    return nResult;
+}
+
+/*
+* supGetMaxOfTwoULongFromString
+*
+* Purpose:
+*
+* Returned value used in listview comparer functions.
+*
+*/
+INT supGetMaxOfTwoULongFromString(
+    _In_ HWND ListView,
+    _In_ LPARAM lParam1,
+    _In_ LPARAM lParam2,
+    _In_ LPARAM lParamSort,
+    _In_ BOOL Inverse
+)
+{
+    INT       nResult;
+    LPWSTR    lpItem1 = NULL, lpItem2 = NULL;
+    ULONG_PTR value1, value2;
+    WCHAR     szText[MAX_TEXT_CONVERSION_ULONG64 + 1];
+
+    RtlSecureZeroMemory(&szText, sizeof(szText));
+
+    lpItem1 = supGetItemText2(
+        ListView,
+        (INT)lParam1,
+        (INT)lParamSort,
+        szText,
+        MAX_TEXT_CONVERSION_ULONG64);
+
+    value1 = strtou64(lpItem1);
+
+    RtlSecureZeroMemory(&szText, sizeof(szText));
+
+    lpItem2 = supGetItemText2(
+        ListView,
+        (INT)lParam2,
+        (INT)lParamSort,
+        szText,
+        MAX_TEXT_CONVERSION_ULONG64);
+
+    value2 = strtou64(lpItem2);
+
+    if (Inverse)
+        nResult = value1 < value2;
+    else
+        nResult = value1 > value2;
+
+    return nResult;
+}
+
+/*
+* supGetMaxCompareTwoFixedStrings
+*
+* Purpose:
+*
+* Returned value used in listview comparer functions.
+*
+*/
+INT supGetMaxCompareTwoFixedStrings(
+    _In_ HWND ListView,
+    _In_ LPARAM lParam1,
+    _In_ LPARAM lParam2,
+    _In_ LPARAM lParamSort,
+    _In_ BOOL Inverse
+)
+{
+    INT       nResult;
+    LPWSTR    lpItem1 = NULL, lpItem2 = NULL;
+    WCHAR     szString1[MAX_PATH + 1], szString2[MAX_PATH + 1];
+
+    szString1[0] = 0;
+
+    lpItem1 = supGetItemText2(
+        ListView,
+        (INT)lParam1,
+        (INT)lParamSort,
+        szString1,
+        MAX_PATH);
+
+    szString2[0] = 0;
+
+    lpItem2 = supGetItemText2(
+        ListView,
+        (INT)lParam2,
+        (INT)lParamSort,
+        szString2,
+        MAX_PATH);
+
+    if (Inverse)
+        nResult = _strcmpi(lpItem2, lpItem1);
+    else
+        nResult = _strcmpi(lpItem1, lpItem2);
+
+    return nResult;
+}
+
+/*
 * supOpenNamedObjectFromContext
 *
 * Purpose:
@@ -3793,7 +4056,7 @@ HANDLE supOpenNamedObjectFromContext(
             MAXIMUM_ALLOWED,
             &objaNamespace,
             Context->NamespaceInfo.BoundaryDescriptor);
-           
+
         if (!NT_SUCCESS(status)) {
             *Status = status;
             return NULL;
@@ -3868,4 +4131,31 @@ HANDLE supOpenNamedObjectFromContext(
     if (hPrivateNamespace) NtClose(hPrivateNamespace);
 
     return hObject;
+}
+
+/*
+* supShowError
+*
+* Purpose:
+*
+* Display detailed last error to user.
+*
+*/
+VOID supShowLastError(
+    _In_ HWND hWnd,
+    _In_ LPWSTR Source,
+    _In_ DWORD LastError
+)
+{
+    LPWSTR lpMsgBuf = NULL;
+
+    if (FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+        NULL, LastError,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPWSTR)&lpMsgBuf, 0, NULL))
+    {
+        MessageBox(hWnd, lpMsgBuf, Source, MB_TOPMOST | MB_ICONERROR);
+        LocalFree(lpMsgBuf);
+    }
 }

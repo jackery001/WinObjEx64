@@ -4,9 +4,9 @@
 *
 *  TITLE:       GLOBAL.H
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        16 Nov 2018
 *
 *  Common header file for the Windows Object Explorer.
 *
@@ -48,7 +48,7 @@
 #pragma comment(lib, "Version.lib")
 
 #if defined (_MSC_VER)
-#if ((_MSC_VER >= 1910) && (_MSC_VER <= 1915)) //Visual Studio 2017
+#if (_MSC_VER >= 1910) //Visual Studio 2017
 #ifdef _DEBUG
 #pragma comment(lib, "vcruntimed.lib")
 #pragma comment(lib, "ucrtd.lib")
@@ -93,7 +93,7 @@ typedef struct _WINOBJ_GLOBALS {
     HANDLE Heap;
     LPWSTR CurrentObjectPath;
     pfnHtmlHelpW HtmlHelpW;
-    HWND AuxDialogs[WOBJ_MAX_DIALOGS];
+    HWND AuxDialogs[wobjMaxDlgId];
     CRITICAL_SECTION Lock;
     RTL_OSVERSIONINFOW osver;
     WCHAR szTempDirectory[MAX_PATH + 1]; //not including backslash

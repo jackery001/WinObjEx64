@@ -20,3 +20,4 @@ DxgkDisplayManagerObject
 DxgkSharedBundleObject
 DxgkSharedKeyedMutextObject
 DxgkSharedProtectedSessionObject
+ActivationObject - 19H1, win32k managed object

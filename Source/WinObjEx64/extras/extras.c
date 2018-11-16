@@ -4,9 +4,9 @@
 *
 *  TITLE:       EXTRAS.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -21,6 +21,7 @@
 #include "extrasSSDT.h"
 #include "extrasDrivers.h"
 #include "extrasIPC.h"
+#include "extrasPSList.h"
 
 /*
 * extrasSimpleListResize
@@ -133,33 +134,22 @@ VOID extrasSetDlgIcon(
 }
 
 /*
-* extrasShowPipeDialog
+* extrasShowIPCDialog
 *
 * Purpose:
 *
-* Display Pipe Properties Dialog.
+* Display Pipe/Mailslots Properties Dialog.
 *
 */
-VOID extrasShowPipeDialog(
-    _In_ HWND hwndParent
+VOID extrasShowIPCDialog(
+    _In_ HWND hwndParent,
+    _In_ ULONG CallerId
 )
 {
-    extrasCreateIpcDialog(hwndParent, IpcModeNamedPipes);
-}
-
-/*
-* extrasShowMailslotsDialog
-*
-* Purpose:
-*
-* Display Mailslots Properties Dialog.
-*
-*/
-VOID extrasShowMailslotsDialog(
-    _In_ HWND hwndParent
-)
-{
-    extrasCreateIpcDialog(hwndParent, IpcModeMailshots);
+    if (CallerId == ID_EXTRAS_MAILSLOTS) 
+        extrasCreateIpcDialog(hwndParent, IpcModeMailSlots);
+    else if (CallerId == ID_EXTRAS_PIPES)
+        extrasCreateIpcDialog(hwndParent, IpcModeNamedPipes);
 }
 
 /*
@@ -201,10 +191,14 @@ VOID extrasShowPrivateNamespacesDialog(
 *
 */
 VOID extrasShowSSDTDialog(
-    _In_ HWND hwndParent
+    _In_ HWND hwndParent,
+    _In_ ULONG CallerId
 )
 {
-    extrasCreateSSDTDialog(hwndParent);
+    if (CallerId == ID_EXTRAS_SSDT)
+        extrasCreateSSDTDialog(hwndParent, SST_Ntos);
+    else if (CallerId == ID_EXTRAS_W32PSERVICETABLE)
+        extrasCreateSSDTDialog(hwndParent, SST_Win32k);
 }
 
 /*
@@ -220,4 +214,19 @@ VOID extrasShowDriversDialog(
 )
 {
     extrasCreateDriversDialog(hwndParent);
+}
+
+/*
+* extrasShowPsListDialog
+*
+* Purpose:
+*
+* Display Process list dialog.
+*
+*/
+VOID extrasShowPsListDialog(
+    _In_ HWND hwndParent
+)
+{
+    extrasCreatePsListDialog(hwndParent);
 }

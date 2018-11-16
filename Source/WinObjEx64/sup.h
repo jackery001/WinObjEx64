@@ -4,9 +4,9 @@
 *
 *  TITLE:       SUP.H
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  Common header file for the program support routines.
 *
@@ -35,6 +35,11 @@ typedef struct _ENUMICONINFO {
     HICON hIcon;
     INT cx, cy;
 } ENUMICONINFO, *PENUMICONINFO;
+
+typedef struct _OBEX_PROCESS_LOOKUP_ENTRY {
+    HANDLE hProcess;
+    PUCHAR EntryPtr;
+} OBEX_PROCESS_LOOKUP_ENTRY, *POBEX_PROCESS_LOOKUP_ENTRY;
 
 //
 // Gripper window size
@@ -125,6 +130,10 @@ VOID supCenterWindow(
 
 VOID supSetWaitCursor(
     _In_ BOOL fSet);
+
+HWND supDisplayLoadBanner(
+    _In_ HWND hwndParent,
+    _In_ LPWSTR lpMessage);
 
 HIMAGELIST supLoadImageList(
     _In_ HINSTANCE hInst,
@@ -242,6 +251,10 @@ BOOL supQueryProcessNameByEPROCESS(
     _Inout_ LPWSTR Buffer,
     _In_ DWORD ccBuffer);
 
+PVOID supFindModuleEntryByName(
+    _In_ PRTL_PROCESS_MODULES pModulesList,
+    _In_ LPCSTR ModuleName);
+
 BOOL supFindModuleNameByAddress(
     _In_ PRTL_PROCESS_MODULES pModulesList,
     _In_ PVOID Address,
@@ -263,8 +276,9 @@ HANDLE supOpenDirectoryForObject(
     _In_ LPWSTR lpDirectory);
 
 BOOL supDumpSyscallTableConverted(
-    _In_ PKLDBGCONTEXT Context,
-    _Inout_ PUTable *Table);
+    _In_ ULONG_PTR ServiceTableAddress,
+    _In_ ULONG ServiceLimit,
+    _Out_ PUTable *Table);
 
 BOOL supCreateSCMSnapshot(
     VOID);
@@ -362,8 +376,34 @@ INT supGetMaxOfTwoU64FromHex(
     _In_ LPARAM lParamSort,
     _In_ BOOL Inverse);
 
+INT supGetMaxOfTwoLongFromString(
+    _In_ HWND ListView,
+    _In_ LPARAM lParam1,
+    _In_ LPARAM lParam2,
+    _In_ LPARAM lParamSort,
+    _In_ BOOL Inverse);
+
+INT supGetMaxOfTwoULongFromString(
+    _In_ HWND ListView,
+    _In_ LPARAM lParam1,
+    _In_ LPARAM lParam2,
+    _In_ LPARAM lParamSort,
+    _In_ BOOL Inverse);
+
+INT supGetMaxCompareTwoFixedStrings(
+    _In_ HWND ListView,
+    _In_ LPARAM lParam1,
+    _In_ LPARAM lParam2,
+    _In_ LPARAM lParamSort,
+    _In_ BOOL Inverse);
+
 HANDLE supOpenNamedObjectFromContext(
     _In_ PROP_OBJECT_INFO *Context,
     _In_ OBJECT_ATTRIBUTES *ObjectAttributes,
     _In_ ACCESS_MASK DesiredAccess,
     _Out_ NTSTATUS *Status);
+
+VOID supShowLastError(
+    _In_ HWND hWnd,
+    _In_ LPWSTR Source,
+    _In_ DWORD LastError);

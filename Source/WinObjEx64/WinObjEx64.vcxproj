@@ -362,6 +362,7 @@
     <ClCompile Include="extras\extrasDrivers.c" />
     <ClCompile Include="extras\extrasIPC.c" />
     <ClCompile Include="extras\extrasPN.c" />
+    <ClCompile Include="extras\extrasPSList.c" />
     <ClCompile Include="extras\extrasSSDT.c" />
     <ClCompile Include="extras\extrasUSD.c" />
     <ClCompile Include="findDlg.c" />
@@ -417,6 +418,7 @@
     <ClInclude Include="extras\extrasDrivers.h" />
     <ClInclude Include="extras\extrasIPC.h" />
     <ClInclude Include="extras\extrasPN.h" />
+    <ClInclude Include="extras\extrasPSList.h" />
     <ClInclude Include="extras\extrasSSDT.h" />
     <ClInclude Include="extras\extrasUSD.h" />
     <ClInclude Include="findDlg.h" />

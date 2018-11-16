@@ -195,6 +195,9 @@
     <ClCompile Include="treelist\treelist.c">
       <Filter>treelist</Filter>
     </ClCompile>
+    <ClCompile Include="extras\extrasPSList.c">
+      <Filter>Source Files\extras</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Resource.rc">
@@ -330,6 +333,9 @@
     </ClInclude>
     <ClInclude Include="wine.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="extras\extrasPSList.h">
+      <Filter>Header Files\extras</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

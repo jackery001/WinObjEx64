@@ -4,9 +4,9 @@
 *
 *  TITLE:       NTOS.H
 *
-*  VERSION:     1.92
+*  VERSION:     1.93
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 *  Common header file for the ntos API functions and definitions.
 *
@@ -2538,9 +2538,31 @@ typedef struct _SYSTEM_HANDLE_INFORMATION_EX {
 #define SE_CREATE_SYMBOLIC_LINK_PRIVILEGE (35L)
 #define SE_MAX_WELL_KNOWN_PRIVILEGE SE_CREATE_SYMBOLIC_LINK_PRIVILEGE
 
-#ifndef NT_SUCCESS
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
-#endif
+//
+// Generic test for success on any status value (non-negative numbers
+// indicate success).
+//
+
+#define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+
+//
+// Generic test for information on any status value.
+//
+
+#define NT_INFORMATION(Status) ((ULONG)(Status) >> 30 == 1)
+
+//
+// Generic test for warning on any status value.
+//
+
+#define NT_WARNING(Status) ((ULONG)(Status) >> 30 == 2)
+
+//
+// Generic test for error on any status value.
+//
+
+#define NT_ERROR(Status) ((ULONG)(Status) >> 30 == 3)
+
 
 /*
 ** OBJECT MANAGER START

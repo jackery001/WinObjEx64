@@ -4,9 +4,9 @@
 *
 *  TITLE:       OBJECTS.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        07 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -199,6 +199,7 @@ HIMAGELIST ObManagerLoadImageList(
 
 Usually none of these object types identities present in object directory.
 
+ActivationObject
 ActivityReference
 CoreMessagining
 DmaAdapter

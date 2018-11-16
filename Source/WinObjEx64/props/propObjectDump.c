@@ -4,9 +4,9 @@
 *
 *  TITLE:       PROPOBJECTDUMP.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        29 Oct 2018
+*  DATE:        01 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -2355,6 +2355,14 @@ VOID ObDumpSyncObject(
     }
 }
 
+/*
+* ObDumpObjectType
+*
+* Purpose:
+*
+* Dump OBJECT_TYPE members to the treelist.
+*
+*/
 VOID ObDumpObjectType(
     _In_ PROP_OBJECT_INFO *Context,
     _In_ HWND hwndDlg
@@ -3016,10 +3024,12 @@ VOID ObDumpAlpcPort(
     //
     //  Dump AlpcPort->StaticSecurity, same offset for every supported Windows.
     //
-   /* ObDumpSqos(
+    /* 
+    ObDumpSqos(
         g_TreeList,
         h_tviRootItem,
-        &AlpcPort.u1.Port7600->StaticSecurity.SecurityQos);*/
+        &AlpcPort.u1.Port7600->StaticSecurity.SecurityQos);
+    */
 
     //
     // Dump AlpcPort->PortAttributes, offset is version aware.
@@ -3271,6 +3281,76 @@ VOID ObjectDumpCopyValue(
 }
 
 /*
+* ObjectDumpInitDialog
+*
+* Purpose:
+*
+* Object window WM_INITDIALOG handler.
+*
+* Show load banner and proceed with actual info dump.
+*
+*/
+INT_PTR ObjectDumpInitDialog(
+    _In_ HWND hwndDlg,
+    _In_ LPARAM lParam
+)
+{
+    PROP_OBJECT_INFO *Context = NULL;
+    PROPSHEETPAGE    *pSheet = (PROPSHEETPAGE *)lParam;
+    HWND hwndBanner = supDisplayLoadBanner(hwndDlg, 
+        TEXT("Processing object dump, please wait"));
+
+    __try {
+        Context = (PROP_OBJECT_INFO*)pSheet->lParam;
+        if (Context) {
+
+            switch (Context->TypeIndex) {
+
+            case ObjectTypeDirectory:
+                ObDumpDirectoryObject(Context, hwndDlg);
+                break;
+
+            case ObjectTypeDriver:
+                ObDumpDriverObject(Context, hwndDlg);
+                break;
+
+            case ObjectTypeDevice:
+                ObDumpDeviceObject(Context, hwndDlg);
+                break;
+
+            case ObjectTypeEvent:
+            case ObjectTypeMutant:
+            case ObjectTypeSemaphore:
+            case ObjectTypeTimer:
+                ObDumpSyncObject(Context, hwndDlg);
+                break;
+
+            case ObjectTypePort:
+                ObDumpAlpcPort(Context, hwndDlg);
+                break;
+
+            case ObjectTypeIoCompletion:
+                ObDumpQueueObject(Context, hwndDlg);
+                break;
+
+            case ObjectTypeFltConnPort:
+                ObDumpFltServerPort(Context, hwndDlg);
+                break;
+
+            case ObjectTypeType:
+                ObDumpObjectType(Context, hwndDlg);
+                break;
+            }
+        }
+    }
+    __finally {
+        SendMessage(hwndBanner, WM_CLOSE, 0, 0);
+    }
+
+    return 1;
+}
+
+/*
 * ObjectDumpDialogProc
 *
 * Purpose:
@@ -3285,11 +3365,6 @@ INT_PTR CALLBACK ObjectDumpDialogProc(
     _In_  LPARAM lParam
 )
 {
-    PROPSHEETPAGE    *pSheet = NULL;
-    PROP_OBJECT_INFO *Context = NULL;
-
-    UNREFERENCED_PARAMETER(wParam);
-
     switch (uMsg) {
 
     case WM_CONTEXTMENU:
@@ -3310,55 +3385,16 @@ INT_PTR CALLBACK ObjectDumpDialogProc(
         }
         break;
 
-    case WM_INITDIALOG:
-        Context = NULL;
-        pSheet = (PROPSHEETPAGE *)lParam;
-        if (pSheet) {
-
-            Context = (PROP_OBJECT_INFO*)pSheet->lParam;
-            if (Context) {
-
-                switch (Context->TypeIndex) {
-
-                case ObjectTypeDirectory:
-                    ObDumpDirectoryObject(Context, hwndDlg);
-                    break;
-
-                case ObjectTypeDriver:
-                    ObDumpDriverObject(Context, hwndDlg);
-                    break;
-
-                case ObjectTypeDevice:
-                    ObDumpDeviceObject(Context, hwndDlg);
-                    break;
-
-                case ObjectTypeEvent:
-                case ObjectTypeMutant:
-                case ObjectTypeSemaphore:
-                case ObjectTypeTimer:
-                    ObDumpSyncObject(Context, hwndDlg);
-                    break;
-
-                case ObjectTypePort:
-                    ObDumpAlpcPort(Context, hwndDlg);
-                    break;
-
-                case ObjectTypeIoCompletion:
-                    ObDumpQueueObject(Context, hwndDlg);
-                    break;
-
-                case ObjectTypeFltConnPort:
-                    ObDumpFltServerPort(Context, hwndDlg);
-                    break;
-
-                case ObjectTypeType:
-                    ObDumpObjectType(Context, hwndDlg);
-                    break;
-                }
-            }
-        }
-        return 1;
+    case WM_DESTROY:
+        DestroyWindow(g_TreeList);
+        UnregisterClass(MAKEINTATOM(g_TreeListAtom), g_WinObj.hInstance);
         break;
+
+    case WM_INITDIALOG:
+
+        return ObjectDumpInitDialog(
+            hwndDlg,
+            lParam);
 
     }
     return 0;

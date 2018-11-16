@@ -4,9 +4,9 @@
 *
 *  TITLE:       TREELIST.C
 *
-*  VERSION:     1.2
+*  VERSION:     1.21
 *
-*  DATE:        25 Oct 2018
+*  DATE:        04 Nov 2018
 *
 *  TreeList control.
 *
@@ -235,7 +235,7 @@ LRESULT TreeListCustomDraw(
 
     ir.right = cx;
 
-    pen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_MENUBAR));
+    pen = CreatePen(PS_SOLID, 1, 0xfbf3e5);// GetSysColor(COLOR_MENUBAR));
     prev = SelectObject(pdraw->nmcd.hdc, pen);
 
     for (i = 0; i < ColumnCount; i++) {
@@ -534,6 +534,14 @@ LRESULT CALLBACK TreeListWindowProc(
 
     switch (uMsg) {
 
+    case TVM_ENSUREVISIBLE:
+
+        TreeControl = (HWND)GetWindowLongPtr(hwnd, TL_TREECONTROL_SLOT);
+        SendMessage(TreeControl, TVM_ENSUREVISIBLE, 0, lParam);
+        return SendMessage(TreeControl, TVM_SELECTITEM, TVGN_CARET, lParam);
+
+        break;
+
     case TVM_GETITEM:
 
         if (wParam == 0)
@@ -666,6 +674,9 @@ LRESULT CALLBACK TreeListWindowProc(
                     TreeListAutoExpand(HeaderControl, (LPNMTREEVIEW)lParam);
                 TreeListUpdateTooltips(hwnd);
                 break;
+
+            default:
+                SendMessage(GetParent(hwnd), uMsg, wParam, lParam);
             }
             /* break to DefWindowProc */
             break;
