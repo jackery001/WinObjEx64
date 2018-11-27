@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        19 Nov 2018
 *
 *  Program entry point and main window handler.
 *
@@ -29,6 +29,17 @@ static LONG	SortColumn = 0;
 HTREEITEM	SelectedTreeItem = NULL;
 BOOL        bMainWndSortInverse = FALSE;
 HWND        hwndToolBar = NULL, hwndSplitter = NULL, hwndStatusBar = NULL, MainWindow = NULL;
+
+//
+// Global UI variables.
+//
+
+HWND g_hwndObjectTree;
+HWND g_hwndObjectList;
+HIMAGELIST g_ListViewImages;
+HIMAGELIST g_ToolBarMenuImages;
+
+WINOBJ_GLOBALS g_WinObj;
 
 /*
 * MainWindowExtrasDisableAdminFeatures
@@ -57,6 +68,7 @@ VOID MainWindowExtrasDisableAdminFeatures(
         SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_SSDT, FALSE, &mii);
         SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_PRIVATENAMESPACES, FALSE, &mii);
         SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_W32PSERVICETABLE, FALSE, &mii);
+        SetMenuItemInfo(hExtrasSubMenu, ID_EXTRAS_CALLBACKS, FALSE, &mii);
     }
 
     //
@@ -242,14 +254,14 @@ VOID MainWindowOnRefresh(
         ObCollectionDestroy(&g_kdctx.ObCollection);
     }
 
-    supFreeSCMSnapshot();
+    supFreeSCMSnapshot(NULL);
     sapiFreeSnapshot();
 
-    supCreateSCMSnapshot();
+    supCreateSCMSnapshot(SERVICE_DRIVER, NULL);
     sapiCreateSetupDBSnapshot();
 
     len = _strlen(g_WinObj.CurrentObjectPath);
-    CurrentPath = supHeapAlloc((len + 1) * sizeof(WCHAR));
+    CurrentPath = (LPWSTR)supHeapAlloc((len + 1) * sizeof(WCHAR));
     if (CurrentPath)
         _strcpy(CurrentPath, g_WinObj.CurrentObjectPath);
 
@@ -394,6 +406,11 @@ LRESULT MainWindowHandleWMCommand(
         extrasShowPsListDialog(hwnd);
         break;
 
+        // Extras -> Callbacks
+    case ID_EXTRAS_CALLBACKS:
+        extrasShowCallbacksDialog(hwnd);
+        break;
+
     case ID_HELP_ABOUT:
 
         DialogBoxParam(
@@ -458,7 +475,7 @@ VOID MainWindowTreeViewSelChanged(
 
         p += _strlen(text) + 1; //+1 for '\'
 
-        list = supHeapAlloc(sizeof(OE_LIST_ITEM));
+        list = (POE_LIST_ITEM)supHeapAlloc(sizeof(OE_LIST_ITEM));
         if (list) {
             list->Prev = prevlist;
             list->TreeItem = hitem;
@@ -467,7 +484,7 @@ VOID MainWindowTreeViewSelChanged(
     }
 
     if (list == NULL) {
-        g_WinObj.CurrentObjectPath = supHeapAlloc(2 * sizeof(WCHAR));
+        g_WinObj.CurrentObjectPath = (LPWSTR)supHeapAlloc(2 * sizeof(WCHAR));
         if (g_WinObj.CurrentObjectPath) {
             g_WinObj.CurrentObjectPath[0] = L'\\';
             g_WinObj.CurrentObjectPath[1] = 0;
@@ -476,7 +493,7 @@ VOID MainWindowTreeViewSelChanged(
     }
 
     list = prevlist;
-    g_WinObj.CurrentObjectPath = supHeapAlloc(p * sizeof(WCHAR));
+    g_WinObj.CurrentObjectPath = (LPWSTR)supHeapAlloc(p * sizeof(WCHAR));
     if (g_WinObj.CurrentObjectPath) {
         p = 0;
         // building the final string
@@ -586,7 +603,7 @@ LRESULT MainWindowHandleWMNotify(
                 ListView_GetItemText(g_hwndObjectList, lvn->iItem, 0, item_string, MAX_PATH);
                 lcp = _strlen(g_WinObj.CurrentObjectPath);
                 if (lcp) {
-                    str = supHeapAlloc((lcp + sizeof(item_string) + 4) * sizeof(WCHAR));
+                    str = (LPWSTR)supHeapAlloc((lcp + sizeof(item_string) + 4) * sizeof(WCHAR));
                     if (str == NULL)
                         break;
                     _strcpy(str, g_WinObj.CurrentObjectPath);
@@ -928,7 +945,8 @@ UINT WinObjExMain()
     HMENU                   hMenu;
     HACCEL                  hAccTable = 0;
     WCHAR                   szWindowTitle[100];
-    HANDLE                  hIcon, hToken;
+    HICON                   hIcon;
+    HANDLE                  hToken;
     HIMAGELIST              TreeViewImages;
 
     if (!WinObjInitGlobals())
@@ -1191,12 +1209,12 @@ UINT WinObjExMain()
         //
         g_ListViewImages = ObManagerLoadImageList();
         if (g_ListViewImages) {
-            hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTUP), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
+            hIcon = (HICON)LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTUP), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
             if (hIcon) {
                 ImageList_ReplaceIcon(g_ListViewImages, -1, hIcon);
                 DestroyIcon(hIcon);
             }
-            hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTDOWN), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
+            hIcon = (HICON)LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTDOWN), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
             if (hIcon) {
                 ImageList_ReplaceIcon(g_ListViewImages, -1, hIcon);
                 DestroyIcon(hIcon);
@@ -1222,7 +1240,7 @@ UINT WinObjExMain()
 
         //set menu icons
         hMenu = GetSubMenu(GetMenu(MainWindow), 1);
-        if (hMenu) {
+        if (hMenu && g_ToolBarMenuImages) {
             supSetMenuIcon(hMenu, ID_VIEW_REFRESH,
                 (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 1));
         }
@@ -1237,14 +1255,14 @@ UINT WinObjExMain()
 
         //set object -> find object menu image
         hMenu = GetSubMenu(GetMenu(MainWindow), 3);
-        if (hMenu) {
+        if (hMenu && g_ToolBarMenuImages) {
             supSetMenuIcon(hMenu, ID_FIND_FINDOBJECT,
                 (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 2));
         }
 
         //set extras -> menu images
         hMenu = GetSubMenu(GetMenu(MainWindow), 4);
-        if (hMenu) {
+        if (hMenu && g_ToolBarMenuImages) {
             // pipes & mailslots
             supSetMenuIcon(hMenu, ID_EXTRAS_MAILSLOTS,
                 (ULONG_PTR)ImageList_ExtractIcon(g_WinObj.hInstance, g_ToolBarMenuImages, 5));
@@ -1346,15 +1364,34 @@ UINT WinObjExMain()
 }
 
 /*
-* main
+* WinMain/main
 *
 * Purpose:
 *
 * Program entry point.
 *
 */
+#if !defined(__cplusplus)
+#pragma comment(linker, "/ENTRY:main")
 void main()
 {
     __security_init_cookie();
     ExitProcess(WinObjExMain());
 }
+#else
+#pragma comment(linker, "/ENTRY:WinMain")
+int CALLBACK WinMain(
+    _In_ HINSTANCE hInstance,
+    _In_ HINSTANCE hPrevInstance,
+    _In_ LPSTR     lpCmdLine,
+    _In_ int       nCmdShow
+)
+{
+    UNREFERENCED_PARAMETER(hInstance);
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+    UNREFERENCED_PARAMETER(nCmdShow);
+
+    ExitProcess(WinObjExMain());
+}
+#endif

@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        19 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -183,7 +183,7 @@ VOID DrvListDrivers(
     PRTL_PROCESS_MODULE_INFORMATION pModule;
 
     do {
-        pModulesList = supGetSystemInfo(SystemModuleInformation);
+        pModulesList = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
         if (pModulesList == NULL)
             break;
 

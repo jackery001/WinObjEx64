@@ -4,9 +4,9 @@
 *
 *  TITLE:       TREELIST.H
 *
-*  VERSION:     1.21
+*  VERSION:     1.22
 *
-*  DATE:        04 Nov 2018
+*  DATE:        18 Nov 2018
 *
 *  Tree-List custom control header file.
 *
@@ -45,6 +45,7 @@ typedef struct _TL_SUBITEMS {
     ULONG		ColorFlags;
     COLORREF	BgColor;
     COLORREF	FontColor;
+    PVOID       UserParam;
     ULONG		Count;
     LPTSTR		Text[1];
 } TL_SUBITEMS, *PTL_SUBITEMS;
@@ -74,3 +75,10 @@ ATOM InitializeTreeListControl();
 
 #define TreeList_GetRoot(hwnd) \
     (HTREEITEM)SNDMSG((hwnd), TVM_GETNEXTITEM, TVGN_ROOT, 0)
+
+#define TreeList_GetNextItem(hwnd, hitem, code) \
+    (HTREEITEM)SNDMSG((hwnd), TVM_GETNEXTITEM, (WPARAM)(code), (LPARAM)(HTREEITEM)(hitem))
+
+#define TreeList_GetChild(hwnd, hitem)          TreeList_GetNextItem(hwnd, hitem, TVGN_CHILD)
+#define TreeList_GetNextSibling(hwnd, hitem)    TreeList_GetNextItem(hwnd, hitem, TVGN_NEXT)
+

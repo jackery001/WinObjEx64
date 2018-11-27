@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        16 Nov 2018
+*  DATE:        22 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -51,9 +51,36 @@ INT_PTR PsListDialogResize(
         cy,
         SWP_NOMOVE | SWP_NOZORDER);
 
-    supSzGripWindowOnResize(PsDlgContext.hwndDlg, PsDlgContext.SizeGrip);
+    if (PsDlgContext.SizeGrip != 0)
+        supSzGripWindowOnResize(PsDlgContext.hwndDlg, PsDlgContext.SizeGrip);
 
     return 1;
+}
+
+/*
+* PsListHandlePopupMenu
+*
+* Purpose:
+*
+* Process list popup construction
+*
+*/
+VOID PsListHandlePopupMenu(
+    _In_ HWND hwndDlg
+)
+{
+    POINT pt1;
+    HMENU hMenu;
+
+    if (GetCursorPos(&pt1) == FALSE)
+        return;
+
+    hMenu = CreatePopupMenu();
+    if (hMenu) {
+        InsertMenu(hMenu, 0, MF_BYCOMMAND, ID_OBJECT_COPY, T_COPYEPROCESS);
+        TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_LEFTALIGN, pt1.x, pt1.y, 0, hwndDlg, NULL);
+        DestroyMenu(hMenu);
+    }
 }
 
 /*
@@ -74,6 +101,24 @@ INT_PTR CALLBACK PsListDialogProc(
     UNREFERENCED_PARAMETER(wParam);
 
     switch (uMsg) {
+
+    case WM_CONTEXTMENU:
+        PsListHandlePopupMenu(hwndDlg);
+        break;
+
+    case WM_COMMAND:
+
+        switch (LOWORD(wParam)) {
+        case IDCANCEL:
+            SendMessage(hwndDlg, WM_CLOSE, 0, 0);
+            return TRUE;
+        case ID_OBJECT_COPY:
+            supCopyTreeListSubItemValue(PsDlgContext.TreeList, 0);
+            break;
+        default:
+            break;
+        }
+        break;
 
     case WM_INITDIALOG:
         supCenterWindow(hwndDlg);
@@ -103,37 +148,112 @@ INT_PTR CALLBACK PsListDialogProc(
 }
 
 /*
-* PsListAddEntry
+* PsListProcessInServicesList
 *
 * Purpose:
 *
-* Output process list entry.
+* Return TRUE if given process is in SCM snapshot.
 *
 */
-VOID PsListAddEntry(
-    _In_ OBEX_PROCESS_LOOKUP_ENTRY* Entry,
-    _In_ PSYSTEM_HANDLE_INFORMATION_EX HandleList
+BOOLEAN PsListProcessInServicesList(
+    _In_ HANDLE ProcessId,
+    _In_ SCMDB *ServicesList
 )
 {
-    BOOL        InJob = FALSE;
-    BOOL        bJobInfoPresent = FALSE, bBasicInfoPresent = FALSE, bIsCriticalInfoPresent = FALSE, bPsProtectInfoPresent = FALSE;
-    NTSTATUS    Status;
-    DWORD       CurrentProcessId = GetCurrentProcessId();
-    ULONG       BreakOnTermination = 0, r;
-    HTREEITEM   hRootItem, hSubItem;
-    ULONG_PTR   ObjectAddress = 0;
-    PWCHAR      Name;
+    DWORD u;
+    LPENUM_SERVICE_STATUS_PROCESS pInfo = NULL;
 
+    pInfo = (LPENUM_SERVICE_STATUS_PROCESS)ServicesList->Entries;
+    for (u = 0; u < ServicesList->NumberOfEntries; u++) {
+        if (pInfo[u].ServiceStatusProcess.dwProcessId)
+            if (UlongToHandle(pInfo[u].ServiceStatusProcess.dwProcessId) == ProcessId)
+            {
+                return TRUE;
+            }
+    }
+    return FALSE;
+}
+
+#define T_IDLE_PROCESS TEXT("Idle")
+#define T_IDLE_PROCESS_LENGTH sizeof(T_IDLE_PROCESS)
+
+/*
+* AddProcessEntryTreeList
+*
+* Purpose:
+*
+* Insert process entry to the treelist.
+*
+*/
+HTREEITEM AddProcessEntryTreeList(
+    _In_opt_ HTREEITEM RootItem,
+    _In_ OBEX_PROCESS_LOOKUP_ENTRY* Entry,
+    _In_ PSYSTEM_HANDLE_INFORMATION_EX HandleList,
+    _In_ SCMDB *ServicesList,
+    _In_ PSID OurSid
+)
+{
+    HTREEITEM hTreeItem = NULL;
+    PSID ProcessSid;
+    PSYSTEM_PROCESSES_INFORMATION processEntry;
     TL_SUBITEMS_FIXED subitems;
-    PSYSTEM_PROCESSES_INFORMATION entry;
+
+    ULONG_PTR ObjectAddress = 0;
+
+    DWORD CurrentProcessId = GetCurrentProcessId();
+
+    NTSTATUS status;
+    ULONG Length, r, fState = 0;
+    PWSTR Caption, P, UserName = NULL;
+
+    LSA_OBJECT_ATTRIBUTES lobja;
+    LSA_HANDLE PolicyHandle = NULL;
+    PLSA_REFERENCED_DOMAIN_LIST ReferencedDomains = NULL;
+    PLSA_TRANSLATED_NAME Names = NULL;
+    SECURITY_QUALITY_OF_SERVICE SecurityQualityOfService;
+
     PROCESS_EXTENDED_BASIC_INFORMATION exbi;
-    PS_PROTECTION PsProtection;
+    WCHAR szEPROCESS[32];
 
-    WCHAR szBuffer[200], szPid[10];
+    SID SidLocalService = { SID_REVISION, 1, SECURITY_NT_AUTHORITY, { SECURITY_LOCAL_SERVICE_RID } };
+
+    RtlSecureZeroMemory(&subitems, sizeof(subitems));
 
     //
-    // Find EPROCESS value.
+    // Id + Name
     //
+    processEntry = Entry->ProcessInformation;
+
+    Length = 32;
+    if (processEntry->ImageName.Length) {
+        Length += processEntry->ImageName.Length;
+    }
+    else {
+        if (processEntry->UniqueProcessId == 0) {
+            Length += T_IDLE_PROCESS_LENGTH;
+        }
+    }
+
+    Caption = (PWSTR)supHeapAlloc(Length);
+
+    P = _strcat(Caption, TEXT("["));
+    ultostr((ULONG)processEntry->UniqueProcessId, P);
+    _strcat(Caption, TEXT("]"));
+
+    _strcat(Caption, TEXT(" "));
+
+    if (processEntry->UniqueProcessId == 0) {
+        _strcat(Caption, T_IDLE_PROCESS);
+    }
+    else {
+        _strcat(Caption, processEntry->ImageName.Buffer);
+    }
+
+    //
+    // EPROCESS value
+    //
+    szEPROCESS[0] = 0;
+
     for (r = 0; r < HandleList->NumberOfHandles; r++)
         if (HandleList->Handles[r].UniqueProcessId == (ULONG_PTR)CurrentProcessId) {
             if (HandleList->Handles[r].HandleValue == (ULONG_PTR)Entry->hProcess) {
@@ -142,293 +262,270 @@ VOID PsListAddEntry(
             }
         }
 
-    entry = (PSYSTEM_PROCESSES_INFORMATION)Entry->EntryPtr;
-
-    //
-    // Set name with case for Idle.
-    //
-    if ((entry->UniqueProcessId == 0) &&
-        (entry->ImageName.Length == 0))
-        Name = L"Idle";
-    else
-        Name = entry->ImageName.Buffer;
-
-    RtlSecureZeroMemory(&subitems, sizeof(subitems));
-    subitems.Count = 2;
-
-    //
-    // Output EPROCESS value if determinated.
-    //
     if (ObjectAddress) {
-        szBuffer[0] = L'0';
-        szBuffer[1] = L'x';
-        u64tohex(ObjectAddress, &szBuffer[2]);
-        subitems.Text[0] = szBuffer;
-    }
-    else {
-        subitems.Text[0] = NULL;
+        szEPROCESS[0] = L'0';
+        szEPROCESS[1] = L'x';
+        u64tohex(ObjectAddress, &szEPROCESS[2]);
     }
 
-    szPid[0] = 0;
-    u64tostr((ULONG_PTR)entry->UniqueProcessId, szPid);
-
-    subitems.Text[1] = Name;
+    subitems.UserParam = processEntry->UniqueProcessId;
+    subitems.Count = 2;
+    subitems.Text[0] = szEPROCESS;
 
     //
-    // Add entry to list.
+    // Colors.
     //
-    hRootItem = TreeListAddItem(
-        PsDlgContext.TreeList,
-        NULL,
-        TVIF_TEXT,
-        0,
-        0,
-        szPid,
-        (PVOID)&subitems);
+    //
+    // 1. Services.
+    //
 
-    if (hRootItem) {
+    ProcessSid = supQueryProcessSid(Entry->hProcess);
 
-        //
-        // Query all info.
-        //
 
-        //
-        // Job status.
-        //
-        Status = NtIsProcessInJob(
-            Entry->hProcess,
+    if (PsListProcessInServicesList(processEntry->UniqueProcessId, ServicesList) ||
+        ((ProcessSid) && RtlEqualSid(&SidLocalService, ProcessSid)))
+    {
+        subitems.ColorFlags = TLF_BGCOLOR_SET;
+        subitems.BgColor = 0xd0d0ff;
+        fState = TVIF_STATE;
+    }
+
+    //
+    // 2. Current user processes.
+    //
+    if (ProcessSid) {
+        if (RtlEqualSid(OurSid, ProcessSid)) {
+            subitems.ColorFlags = TLF_BGCOLOR_SET;
+            subitems.BgColor = 0xffd0d0;
+            fState = TVIF_STATE;
+        }
+    }
+
+    //
+    // 3. Store processes.
+    //
+    if (g_ExtApiSet.IsImmersiveProcess) {
+        if (g_ExtApiSet.IsImmersiveProcess(Entry->hProcess)) {
+            subitems.ColorFlags = TLF_BGCOLOR_SET;
+            subitems.BgColor = 0xeaea00;
+            fState = TVIF_STATE;
+        }
+    }
+
+    //
+    // 4. Protected processes.
+    //
+    exbi.Size = sizeof(PROCESS_EXTENDED_BASIC_INFORMATION);
+    if (NT_SUCCESS(NtQueryInformationProcess(Entry->hProcess, ProcessBasicInformation,
+        &exbi, sizeof(exbi), &r)))
+    {
+        if (exbi.IsProtectedProcess) {
+            subitems.ColorFlags = TLF_BGCOLOR_SET;
+            subitems.BgColor = 0xe6ffe6;
+            fState = TVIF_STATE;
+        }
+    }
+
+    //
+    // User.
+    //
+    if (ProcessSid) {
+
+        SecurityQualityOfService.Length = sizeof(SECURITY_QUALITY_OF_SERVICE);
+        SecurityQualityOfService.ImpersonationLevel = SecurityImpersonation;
+        SecurityQualityOfService.ContextTrackingMode = SECURITY_DYNAMIC_TRACKING;
+        SecurityQualityOfService.EffectiveOnly = FALSE;
+
+        InitializeObjectAttributes(
+            &lobja,
+            NULL,
+            0L,
+            NULL,
             NULL);
 
-        if (NT_SUCCESS(Status)) {
-            bJobInfoPresent = TRUE;
-            InJob = !(Status == STATUS_PROCESS_NOT_IN_JOB);
-        }
+        lobja.SecurityQualityOfService = &SecurityQualityOfService;
 
-        //
-        // Critical process flag.
-        //
-        bIsCriticalInfoPresent = (NT_SUCCESS(NtQueryInformationProcess(
-            Entry->hProcess,
-            ProcessBreakOnTermination,
-            &BreakOnTermination,
-            sizeof(ULONG),
-            &r)));
+        if (NT_SUCCESS(LsaOpenPolicy(NULL,
+            (PLSA_OBJECT_ATTRIBUTES)&lobja,
+            POLICY_LOOKUP_NAMES,
+            (PLSA_HANDLE)&PolicyHandle)))
+        {
+            status = LsaLookupSids(
+                PolicyHandle,
+                1,
+                (PSID*)&ProcessSid,
+                (PLSA_REFERENCED_DOMAIN_LIST*)&ReferencedDomains,
+                (PLSA_TRANSLATED_NAME*)&Names);
 
-        //
-        // Extended process flags.
-        //
-        bBasicInfoPresent = (NT_SUCCESS(NtQueryInformationProcess(
-            Entry->hProcess,
-            ProcessBasicInformation,
-            &exbi,
-            sizeof(PROCESS_EXTENDED_BASIC_INFORMATION),
-            &r)));
+            if ((NT_SUCCESS(status)) && (status != STATUS_SOME_NOT_MAPPED)) {
 
+                Length = 0;
 
-        //
-        // Protection information.
-        //
-        PsProtection.Level = 0;
-        bPsProtectInfoPresent = (NT_SUCCESS(NtQueryInformationProcess(
-            Entry->hProcess,
-            ProcessProtectionInformation,
-            &PsProtection,
-            sizeof(ULONG),
-            &r)));
+                if ((ReferencedDomains != NULL) && (Names != NULL)) {
 
-        //
-        // Output info.
-        //
+                    Length = 4 + ReferencedDomains->Domains[0].Name.MaximumLength +
+                        Names->Name.MaximumLength;
 
-        //
-        // Job status.
-        //
-        if (bJobInfoPresent) {
-            RtlSecureZeroMemory(&subitems, sizeof(subitems));
-            subitems.Count = 2;
-            subitems.Text[0] = TEXT("ProcessInJob");
-            subitems.Text[1] = (InJob) ? L"TRUE" : L"FALSE";
+                    UserName = (LPWSTR)supHeapAlloc(r);
+                    if (UserName) {
 
-            TreeListAddItem(
-                PsDlgContext.TreeList,
-                hRootItem,
-                TVIF_TEXT,
-                0,
-                0,
-                NULL,
-                &subitems);
-        }
+                        _strncpy(UserName, 
+                            Length,
+                            ReferencedDomains->Domains[0].Name.Buffer,
+                            ReferencedDomains->Domains[0].Name.Length);
+                        
+                        Length -= ReferencedDomains->Domains[0].Name.Length;
 
-        //
-        // Critical process flag.
-        //
-        if (bIsCriticalInfoPresent) {
-            RtlSecureZeroMemory(&subitems, sizeof(subitems));
-            subitems.Count = 2;
-            subitems.Text[0] = TEXT("IsCritical");
-            subitems.Text[1] = (BreakOnTermination != 0) ? L"TRUE" : L"FALSE";
+                        P = _strcat(UserName, TEXT("\\"));
 
-            TreeListAddItem(
-                PsDlgContext.TreeList,
-                hRootItem,
-                TVIF_TEXT,
-                0,
-                0,
-                NULL,
-                &subitems);
-        }
+                        Length -= sizeof(WCHAR);
 
-        //
-        // Extended process flags.
-        //
-        if (bBasicInfoPresent) {
-
-            hSubItem = TreeListAddItem(
-                PsDlgContext.TreeList,
-                hRootItem,
-                TVIF_TEXT,
-                0,
-                0,
-                TEXT("Flags"),
-                NULL);
-
-            if (hSubItem) {
-
-                for (r = 0; r < MAX_KNOWN_PEXBI_PROCESS_FLAGS; r++) {
-
-                    RtlSecureZeroMemory(&subitems, sizeof(subitems));
-                    subitems.Count = 2;
-                    subitems.Text[0] = T_PEXBI_PROCESS_FLAGS[r];
-                    subitems.Text[1] = szBuffer;
-
-                    szBuffer[0] = 0;
-                    ultostr(GET_BIT(exbi.Flags, r), szBuffer);
-
-                    TreeListAddItem(
-                        PsDlgContext.TreeList,
-                        hSubItem,
-                        TVIF_TEXT,
-                        0,
-                        0,
-                        NULL,
-                        &subitems);
+                        _strncpy(P,
+                            Length,
+                            Names->Name.Buffer,
+                            Names->Name.Length);
+                         
+                        subitems.Text[1] = UserName;
+                    }
                 }
-
+                if (ReferencedDomains) LsaFreeMemory(ReferencedDomains);
+                if (Names) LsaFreeMemory(Names);
             }
+            LsaClose(PolicyHandle);
         }
-
-        //
-        // Protection information.
-        //
-        if (bPsProtectInfoPresent) {
-
-            if (PsProtection.Level) {
-
-                RtlSecureZeroMemory(&subitems, sizeof(subitems));
-                subitems.Count = 2;
-                subitems.Text[0] = NULL;
-                subitems.Text[1] = TEXT("PS_PROTECTION");
-
-                hSubItem = TreeListAddItem(
-                    PsDlgContext.TreeList,
-                    hRootItem,
-                    TVIF_TEXT,
-                    0,
-                    0,
-                    TEXT("PsProtection"),
-                    &subitems);
-
-                if (hSubItem) {
-
-
-                    //
-                    // PsProtection.Signer
-                    //
-                    if (PsProtection.Signer < MAX_KNOWN_PS_PROTECTED_SIGNER)
-                        Name = T_PSPROTECTED_SIGNER[PsProtection.Signer];
-                    else
-                        Name = T_Unknown;
-
-                    RtlSecureZeroMemory(&subitems, sizeof(subitems));
-                    subitems.Count = 2;
-                    subitems.Text[0] = TEXT("Signer");
-                    subitems.Text[1] = Name;
-
-                    TreeListAddItem(
-                        PsDlgContext.TreeList,
-                        hSubItem,
-                        TVIF_TEXT,
-                        0,
-                        0,
-                        NULL,
-                        &subitems);
-
-                    //
-                    // PsProtection.Type
-                    //
-                    if (PsProtection.Type < MAX_KNOWN_PS_PROTECTED_TYPE)
-                        Name = T_PSPROTECTED_TYPE[PsProtection.Type];
-                    else
-                        Name = T_Unknown;
-
-                    RtlSecureZeroMemory(&subitems, sizeof(subitems));
-                    subitems.Count = 2;
-                    subitems.Text[0] = TEXT("Type");
-                    subitems.Text[1] = Name;
-
-                    TreeListAddItem(
-                        PsDlgContext.TreeList,
-                        hSubItem,
-                        TVIF_TEXT,
-                        0,
-                        0,
-                        NULL,
-                        &subitems);
-
-                    //
-                    // PsProtection.Audit
-                    //
-                    RtlSecureZeroMemory(&subitems, sizeof(subitems));
-                    subitems.Count = 2;
-                    subitems.Text[0] = TEXT("Audit");
-                    subitems.Text[1] = szBuffer;
-
-                    szBuffer[0] = 0;
-                    ultostr(PsProtection.Audit, _strend(szBuffer));
-
-                    TreeListAddItem(
-                        PsDlgContext.TreeList,
-                        hSubItem,
-                        TVIF_TEXT,
-                        0,
-                        0,
-                        NULL,
-                        &subitems);
-                }
-            }
-        }
+        supHeapFree(ProcessSid);
     }
+
+    hTreeItem = TreeListAddItem(
+        PsDlgContext.TreeList,
+        RootItem,
+        TVIF_TEXT | fState,
+        0,
+        0,
+        Caption,
+        &subitems);
+
+    if (UserName)
+        supHeapFree(UserName);
+
+    return hTreeItem;
 }
 
+typedef BOOL(CALLBACK *FINDITEMCALLBACK)(
+    HWND TreeList,
+    HTREEITEM htItem,
+    ULONG_PTR UserContext
+    );
+
 /*
-* PsList
+* FindItemByProcessIdCallback
 *
 * Purpose:
 *
-* Build and output process list.
+* Search callback.
 *
 */
-VOID PsList()
+BOOL CALLBACK FindItemMatchCallback(
+    _In_ HWND TreeList,
+    _In_ HTREEITEM htItem,
+    _In_ ULONG_PTR UserContext
+)
 {
+    HANDLE             ParentProcessId = (HANDLE)UserContext;
+    TL_SUBITEMS_FIXED *subitems = NULL;
+    TVITEMEX           itemex;
+
+    RtlSecureZeroMemory(&itemex, sizeof(itemex));
+    itemex.hItem = htItem;
+    TreeList_GetTreeItem(TreeList, &itemex, &subitems);
+
+    if (subitems) {
+        if (subitems->UserParam == NULL)
+            return FALSE;
+
+        return (ParentProcessId == subitems->UserParam);
+    }
+
+    return FALSE;
+}
+
+/*
+* FindItemRecursive
+*
+* Purpose:
+*
+* Recursive find item.
+*
+*/
+HTREEITEM FindItemRecursive(
+    _In_ HWND TreeList,
+    _In_ HTREEITEM htStart,
+    _In_ FINDITEMCALLBACK FindItemCallback,
+    _In_ ULONG_PTR UserContext
+)
+{
+    HTREEITEM htItemMatch = NULL;
+    HTREEITEM htItemCurrent = htStart;
+
+    if (FindItemCallback == NULL)
+        return NULL;
+
+    while (htItemCurrent != NULL && htItemMatch == NULL) {
+        if (FindItemCallback(TreeList, htItemCurrent, UserContext)) {
+            htItemMatch = htItemCurrent;
+        }
+        else {
+            htItemMatch = FindItemRecursive(TreeList,
+                TreeList_GetChild(TreeList, htItemCurrent), FindItemCallback, UserContext);
+        }
+        htItemCurrent = TreeList_GetNextSibling(TreeList, htItemCurrent);
+    }
+    return htItemMatch;
+}
+
+/*
+* FindParentItem
+*
+* Purpose:
+*
+* Return treelist item with given parent process id.
+*
+*/
+HTREEITEM FindParentItem(
+    _In_ HWND TreeList,
+    _In_ HANDLE ParentProcessId
+)
+{
+    HTREEITEM htiRoot = TreeList_GetRoot(TreeList);
+    return FindItemRecursive(TreeList,
+        htiRoot, FindItemMatchCallback, (ULONG_PTR)ParentProcessId);
+}
+
+/*
+* CreateProcessTreeList
+*
+* Purpose:
+*
+* Build and output process tree list.
+*
+*/
+VOID CreateProcessTreeList()
+{
+    DWORD ServiceEnumType;
     ULONG NextEntryDelta = 0, NumberOfProcesses = 0;
+
+    HTREEITEM ViewRootHandle;
 
     HANDLE hProcess = NULL;
     PVOID InfoBuffer = NULL;
     PSYSTEM_HANDLE_INFORMATION_EX pHandles = NULL;
+    PSID OurSid = NULL;
 
-    OBEX_PROCESS_LOOKUP_ENTRY *spl = NULL, *tmp;
+    OBEX_PROCESS_LOOKUP_ENTRY *spl = NULL, *LookupEntry;
 
-    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES(NULL, 0);
+    SCMDB ServicesList;
+
+    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES((PUNICODE_STRING)NULL, 0);
 
     union {
         PSYSTEM_PROCESSES_INFORMATION Processes;
@@ -436,12 +533,33 @@ VOID PsList()
     } List;
 
     __try {
+        ServicesList.NumberOfEntries = 0;
+        ServicesList.Entries = NULL;
+
+        OurSid = supQueryProcessSid(NtCurrentProcess());
+
+        if (g_NtBuildNumber >= 14393) {
+            ServiceEnumType = SERVICE_TYPE_ALL;
+        }
+        else if (g_NtBuildNumber >= 10240) {
+            ServiceEnumType = SERVICE_WIN32 |
+                SERVICE_ADAPTER |
+                SERVICE_DRIVER |
+                SERVICE_INTERACTIVE_PROCESS |
+                SERVICE_USER_SERVICE |
+                SERVICE_USERSERVICE_INSTANCE;
+        }
+        else {
+            ServiceEnumType = SERVICE_DRIVER | SERVICE_WIN32;
+        }
+        if (!supCreateSCMSnapshot(ServiceEnumType, &ServicesList))
+            __leave;
 
         InfoBuffer = supGetSystemInfo(SystemProcessInformation);
         if (InfoBuffer == NULL)
             __leave;
 
-        List.ListRef = InfoBuffer;
+        List.ListRef = (PBYTE)InfoBuffer;
 
         //
         // Calculate process handle list size.
@@ -460,14 +578,14 @@ VOID PsList()
         //
         // Build process handle list.
         //
-        spl = supHeapAlloc(NumberOfProcesses * sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
+        spl = (OBEX_PROCESS_LOOKUP_ENTRY*)supHeapAlloc(NumberOfProcesses * sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
         if (spl == NULL)
             __leave;
 
-        tmp = spl;
+        LookupEntry = spl;
 
         NextEntryDelta = 0;
-        List.ListRef = InfoBuffer;
+        List.ListRef = (PBYTE)InfoBuffer;
 
         do {
             List.ListRef += NextEntryDelta;
@@ -481,9 +599,10 @@ VOID PsList()
                     &List.Processes->Threads[0].ClientId);
             }
 
-            tmp->hProcess = hProcess;
-            tmp->EntryPtr = List.ListRef;
-            tmp = (OBEX_PROCESS_LOOKUP_ENTRY*)RtlOffsetToPointer(tmp, sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
+            LookupEntry->hProcess = hProcess;
+            LookupEntry->EntryPtr = List.ListRef;
+            LookupEntry = (OBEX_PROCESS_LOOKUP_ENTRY*)RtlOffsetToPointer(LookupEntry,
+                sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
 
             NextEntryDelta = List.Processes->NextEntryDelta;
 
@@ -496,19 +615,42 @@ VOID PsList()
         //
         // Output all process entries.
         //
-        tmp = spl;
+        LookupEntry = spl;
 
-        do {
+        //idle
+        AddProcessEntryTreeList(NULL,
+            LookupEntry, pHandles, &ServicesList, OurSid);
 
-            PsListAddEntry(tmp, pHandles);
-            if (tmp->hProcess) NtClose(tmp->hProcess);
-            tmp = (OBEX_PROCESS_LOOKUP_ENTRY*)RtlOffsetToPointer(tmp, sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
+        NumberOfProcesses--;
+        ViewRootHandle = NULL;
+
+        while (NumberOfProcesses) {
+
+            LookupEntry = (OBEX_PROCESS_LOOKUP_ENTRY*)RtlOffsetToPointer(
+                LookupEntry, sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
+
+            ViewRootHandle = FindParentItem(PsDlgContext.TreeList,
+                LookupEntry->ProcessInformation->InheritedFromUniqueProcessId);
+
+            if (ViewRootHandle == NULL) {
+                ViewRootHandle = AddProcessEntryTreeList(NULL,
+                    LookupEntry, pHandles, &ServicesList, OurSid);
+            }
+            else {
+                AddProcessEntryTreeList(ViewRootHandle,
+                    LookupEntry, pHandles, &ServicesList, OurSid);
+            }
+
+            if (LookupEntry->hProcess)
+                NtClose(LookupEntry->hProcess);
+
             NumberOfProcesses--;
-
-        } while (NumberOfProcesses);
+        }
 
     }
     __finally {
+        if (OurSid) supHeapFree(OurSid);
+        supFreeSCMSnapshot(&ServicesList);
         if (InfoBuffer) supHeapFree(InfoBuffer);
         if (pHandles) supHeapFree(pHandles);
         if (spl) supHeapFree(spl);
@@ -563,20 +705,20 @@ VOID extrasCreatePsListDialog(
         RtlSecureZeroMemory(&hdritem, sizeof(hdritem));
         hdritem.mask = HDI_FORMAT | HDI_TEXT | HDI_WIDTH;
         hdritem.fmt = HDF_LEFT | HDF_BITMAP_ON_RIGHT | HDF_STRING;
-        hdritem.cxy = 130;
-        hdritem.pszText = TEXT("Id");
+        hdritem.cxy = 300;
+        hdritem.pszText = TEXT("Process");
         TreeList_InsertHeaderItem(PsDlgContext.TreeList, 0, &hdritem);
 
         hdritem.cxy = 130;
-        hdritem.pszText = TEXT("Value");
+        hdritem.pszText = TEXT("Object");
         TreeList_InsertHeaderItem(PsDlgContext.TreeList, 1, &hdritem);
 
-        hdritem.cxy = 400;
-        hdritem.pszText = TEXT("Additional information");
+        hdritem.cxy = 180;
+        hdritem.pszText = TEXT("User");
         TreeList_InsertHeaderItem(PsDlgContext.TreeList, 2, &hdritem);
     }
 
-    PsList();
+    CreateProcessTreeList();
 
     PsListDialogResize();
 }

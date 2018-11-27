@@ -4,9 +4,9 @@
 *
 *  TITLE:       EXTAPI.C
 *
-*  VERSION:     1.53
+*  VERSION:     1.61
 *
-*  DATE:        07 Mar 2018
+*  DATE:        19 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -32,8 +32,8 @@ NTSTATUS ExApiSetInit(
     VOID
     )
 {
-    NTSTATUS Status = STATUS_SOME_NOT_MAPPED;
-    HANDLE hNtdll = NULL;
+    NTSTATUS Status;
+    HMODULE hNtdll, hUser32;
 
     RtlSecureZeroMemory(&g_ExtApiSet, sizeof(g_ExtApiSet));
 
@@ -46,9 +46,19 @@ NTSTATUS ExApiSetInit(
 
         if (g_ExtApiSet.NtOpenPartition) {
             g_ExtApiSet.NumberOfAPI++;
-            Status = STATUS_SUCCESS;
         }
     }
+
+    hUser32 = GetModuleHandle(TEXT("user32.dll"));
+    if (hUser32) {
+        g_ExtApiSet.IsImmersiveProcess = (pfnIsImmersiveProcess)GetProcAddress(hUser32, "IsImmersiveProcess");
+        if (g_ExtApiSet.IsImmersiveProcess) {
+            g_ExtApiSet.NumberOfAPI++;
+        }
+    }
+
+    Status = (g_ExtApiSet.NumberOfAPI == EXTAPI_ALL_MAPPED) ? 
+        STATUS_SUCCESS : STATUS_NOT_ALL_ASSIGNED;
 
     return Status;
 }

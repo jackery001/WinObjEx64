@@ -97,7 +97,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>.\output\$(Platform)\$(Configuration)\bin\</OutDir>
     <IntDir>.\output\$(Platform)\$(Configuration)\</IntDir>
-    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSet>..\..\..\Program Files (x86)\Microsoft Visual Studio\2017\Professional\Team Tools\Static Analysis Tools\Rule Sets\SecurityRules.ruleset</CodeAnalysisRuleSet>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseSigned|x64'">
     <OutDir>.\output\$(Platform)\$(Configuration)\bin\</OutDir>
@@ -113,9 +114,10 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseNotSignedWithDriver|x64'">
     <OutDir>.\output\$(Platform)\$(Configuration)\bin\</OutDir>
     <IntDir>.\output\$(Platform)\$(Configuration)\</IntDir>
-    <CodeAnalysisRuleSet>SecurityRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSet>..\..\..\Program Files (x86)\Microsoft Visual Studio\2017\Professional\Team Tools\Static Analysis Tools\Rule Sets\SecurityRules.ruleset</CodeAnalysisRuleSet>
     <PostBuildEventUseInBuild>
     </PostBuildEventUseInBuild>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -128,7 +130,7 @@
       <ExpandAttributedSource>true</ExpandAttributedSource>
       <AssemblerOutput>All</AssemblerOutput>
       <BrowseInformation>true</BrowseInformation>
-      <CompileAs>CompileAsC</CompileAs>
+      <CompileAs>CompileAsCpp</CompileAs>
       <MultiProcessorCompilation>false</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\treelist;$(ProjectDir)\props;$(ProjectDir)\extras;$(ProjectDir)\ntos</AdditionalIncludeDirectories>
     </ClCompile>
@@ -139,7 +141,8 @@
       <SuppressStartupBanner>false</SuppressStartupBanner>
       <GenerateMapFile>true</GenerateMapFile>
       <MapExports>true</MapExports>
-      <EntryPointSymbol>main</EntryPointSymbol>
+      <EntryPointSymbol>
+      </EntryPointSymbol>
     </Link>
     <Manifest>
       <SuppressStartupBanner>false</SuppressStartupBanner>
@@ -165,10 +168,9 @@
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <ExpandAttributedSource>true</ExpandAttributedSource>
-      <AssemblerOutput>All</AssemblerOutput>
-      <CompileAs>CompileAsC</CompileAs>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\treelist;$(ProjectDir)\props;$(ProjectDir)\extras;$(ProjectDir)\ntos</AdditionalIncludeDirectories>
+      <CompileAs>CompileAsC</CompileAs>
+      <EnablePREfast>true</EnablePREfast>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -176,10 +178,11 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>No</GenerateDebugInformation>
       <Version>6.0</Version>
-      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateMapFile>true</GenerateMapFile>
       <MapExports>true</MapExports>
-      <EntryPointSymbol>main</EntryPointSymbol>
+      <EntryPointSymbol>
+      </EntryPointSymbol>
       <SetChecksum>true</SetChecksum>
     </Link>
     <Manifest>
@@ -225,10 +228,11 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>No</GenerateDebugInformation>
       <Version>6.0</Version>
-      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateMapFile>true</GenerateMapFile>
       <MapExports>true</MapExports>
-      <EntryPointSymbol>main</EntryPointSymbol>
+      <EntryPointSymbol>
+      </EntryPointSymbol>
       <SetChecksum>true</SetChecksum>
       <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
@@ -274,10 +278,11 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>No</GenerateDebugInformation>
       <Version>6.0</Version>
-      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateMapFile>true</GenerateMapFile>
       <MapExports>true</MapExports>
-      <EntryPointSymbol>main</EntryPointSymbol>
+      <EntryPointSymbol>
+      </EntryPointSymbol>
       <SetChecksum>true</SetChecksum>
       <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
@@ -316,10 +321,9 @@
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <ExpandAttributedSource>true</ExpandAttributedSource>
-      <AssemblerOutput>All</AssemblerOutput>
       <CompileAs>CompileAsC</CompileAs>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\treelist;$(ProjectDir)\props;$(ProjectDir)\extras;$(ProjectDir)\ntos</AdditionalIncludeDirectories>
+      <EnablePREfast>true</EnablePREfast>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -327,10 +331,11 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>No</GenerateDebugInformation>
       <Version>6.0</Version>
-      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateMapFile>true</GenerateMapFile>
       <MapExports>true</MapExports>
-      <EntryPointSymbol>main</EntryPointSymbol>
+      <EntryPointSymbol>
+      </EntryPointSymbol>
       <SetChecksum>true</SetChecksum>
     </Link>
     <Manifest>
@@ -359,6 +364,7 @@
     <ClCompile Include="excepth.c" />
     <ClCompile Include="extapi.c" />
     <ClCompile Include="extras\extras.c" />
+    <ClCompile Include="extras\extrasCallbacks.c" />
     <ClCompile Include="extras\extrasDrivers.c" />
     <ClCompile Include="extras\extrasIPC.c" />
     <ClCompile Include="extras\extrasPN.c" />
@@ -415,6 +421,7 @@
     <ClInclude Include="excepth.h" />
     <ClInclude Include="extapi.h" />
     <ClInclude Include="extras\extras.h" />
+    <ClInclude Include="extras\extrasCallbacks.h" />
     <ClInclude Include="extras\extrasDrivers.h" />
     <ClInclude Include="extras\extrasIPC.h" />
     <ClInclude Include="extras\extrasPN.h" />

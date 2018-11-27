@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        23 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -22,6 +22,7 @@
 #include "extrasDrivers.h"
 #include "extrasIPC.h"
 #include "extrasPSList.h"
+#include "extrasCallbacks.h"
 
 /*
 * extrasSimpleListResize
@@ -129,7 +130,7 @@ VOID extrasSetDlgIcon(
     hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_MAIN), IMAGE_ICON, 0, 0, LR_SHARED);
     if (hIcon) {
         SetClassLongPtr(hwndDlg, GCLP_HICON, (LONG_PTR)hIcon);
-        DestroyIcon(hIcon);
+        DestroyIcon((HICON)hIcon);
     }
 }
 
@@ -229,4 +230,19 @@ VOID extrasShowPsListDialog(
 )
 {
     extrasCreatePsListDialog(hwndParent);
+}
+
+/*
+* extrasShowCallbacksDialog
+*
+* Purpose:
+*
+* Display Callbacks dialog.
+*
+*/
+VOID extrasShowCallbacksDialog(
+    _In_ HWND hwndParent
+)
+{
+    extrasCreateCallbacksDialog(hwndParent);
 }

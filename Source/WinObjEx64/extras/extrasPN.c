@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        19 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -181,7 +181,7 @@ Done:
 */
 BOOL CALLBACK PNDlgEnumerateCallback(
     _In_ POBJREF Entry,
-    _In_ PVOID Context
+    _In_opt_ PVOID Context
 )
 {
     INT     index;
@@ -332,7 +332,7 @@ VOID PNDlgOutputSelectedSidInformation(
     PSID pSid;
     PWSTR stype;
 
-    DWORD cAccountName, cReferencedDomainName;
+    DWORD cAccountName = 0, cReferencedDomainName = 0;
 
     WCHAR szName[256];
     WCHAR szDomain[256];
@@ -427,7 +427,7 @@ VOID PNDlgOutputSelectedSidInformation(
         _strcat(szAccountInfo, stype);
     }
     else {
-        _strcpy(szAccountInfo, TEXT("-"));
+        _strcpy(szAccountInfo, T_CannotQuery);
     }
     SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_SID_ACCOUNT, szAccountInfo);
 
@@ -450,7 +450,7 @@ BOOL CALLBACK PNDlgBoundaryDescriptorCallback(
 {
     PWSTR p, lpName;
     PSID Sid;
-    HANDLE hwndDlg = (HWND)Context;
+    HWND hwndDlg = (HWND)Context;
     DWORD dwIL;
 
     WCHAR szBuffer[MAX_PATH];
@@ -460,7 +460,7 @@ BOOL CALLBACK PNDlgBoundaryDescriptorCallback(
     case OBNS_Name:
 
         p = (PWSTR)RtlOffsetToPointer(Entry, sizeof(OBJECT_BOUNDARY_ENTRY));
-        lpName = supHeapAlloc(Entry->EntrySize);
+        lpName = (PWSTR)supHeapAlloc(Entry->EntrySize);
         if (lpName) {
             RtlCopyMemory(lpName, p, Entry->EntrySize - sizeof(OBJECT_BOUNDARY_ENTRY));
             SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_NAME, lpName);
@@ -589,9 +589,9 @@ VOID PNDlgShowNamespaceInfo(
     //
     // Reset output related controls.
     //
-    SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_NAME, NULL);
-    SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_SID_ACCOUNT, TEXT("-"));
-    SetDlgItemText(hwndDlg, ID_INTEGRITYLABEL, TEXT("-"));
+    SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_NAME, TEXT(""));
+    SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_SID_ACCOUNT, T_CannotQuery);
+    SetDlgItemText(hwndDlg, ID_INTEGRITYLABEL, T_CannotQuery);
     SetDlgItemText(hwndDlg, ID_BDESCRIPTOR_ENTRIES, TEXT("0"));
     SendMessage(GetDlgItem(hwndDlg, ID_BDESCRIPTOR_SID), CB_RESETCONTENT, (WPARAM)0, (LPARAM)0);
     EnableWindow(GetDlgItem(hwndDlg, ID_BDESCRIPTOR_SID_COPY), FALSE);
@@ -707,7 +707,7 @@ VOID PNDlgCopySelectedSid(
     if (nSelected >= 0) {
         TextLength = SendMessage(hComboBox, CB_GETLBTEXTLEN, (WPARAM)nSelected, 0);
         if (TextLength) {
-            lpStringSid = supHeapAlloc((1 + TextLength) * sizeof(WCHAR));
+            lpStringSid = (PWCHAR)supHeapAlloc((1 + TextLength) * sizeof(WCHAR));
             if (lpStringSid) {
                 SendMessage(hComboBox, CB_GETLBTEXT, nSelected, (LPARAM)lpStringSid);
 

@@ -4,11 +4,11 @@
 *
 *  TITLE:       EXTAPI.H
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        27 Oct 2018
+*  DATE:        16 Nov 2018
 *
-*  Header file for Windows 10 new API which we cannot statically link.
+*  Windows/Native API which we cannot statically link because have to support Windows 7
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -32,9 +32,16 @@ typedef NTSTATUS (NTAPI *pfnNtManagePartition)(
     _In_ ULONG PartitionInformationLength
     );
 
+typedef BOOL (WINAPI *pfnIsImmersiveProcess)(
+    HANDLE hProcess
+    );
+
+#define EXTAPI_ALL_MAPPED 2
+
 typedef struct _EXTENDED_API_SET {
     ULONG NumberOfAPI;
     pfnNtOpenPartition NtOpenPartition;
+    pfnIsImmersiveProcess IsImmersiveProcess;
 } EXTENDED_API_SET, *PEXTENDED_API_SET;
 
 NTSTATUS ExApiSetInit(

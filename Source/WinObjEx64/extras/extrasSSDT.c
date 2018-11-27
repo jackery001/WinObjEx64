@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        23 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -497,7 +497,7 @@ VOID SdtListTable(
                 __leave;
             }
 
-            ExportDirectory = RtlImageDirectoryEntryToData(
+            ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)RtlImageDirectoryEntryToData(
                 Module,
                 TRUE,
                 IMAGE_DIRECTORY_ENTRY_EXPORT,
@@ -680,7 +680,7 @@ VOID SdtListTableShadow(
                 __leave;
             }
 
-            ExportDirectory = RtlImageDirectoryEntryToData(
+            ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)RtlImageDirectoryEntryToData(
                 hWin32u,
                 TRUE,
                 IMAGE_DIRECTORY_ENTRY_EXPORT,

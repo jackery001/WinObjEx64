@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        26 Nov 2018
 *
 *  Common header file for the Kernel Debugger Driver support.
 *
@@ -101,11 +101,8 @@ typedef struct _KLDBGCONTEXT {
 
 } KLDBGCONTEXT, *PKLDBGCONTEXT;
 
-//global context
-KLDBGCONTEXT g_kdctx;
-
-//global build number
-ULONG g_NtBuildNumber;
+extern KLDBGCONTEXT g_kdctx;
+extern ULONG g_NtBuildNumber;
 
 typedef struct _KLDBG {
     SYSDBG_COMMAND SysDbgRequest;
@@ -137,17 +134,59 @@ typedef struct _OBJREF {
     OBJREFPNS PrivateNamespace;
 } OBJREF, *POBJREF;
 
+//
+// Callbacks support.
+//
+
+//
+// Actual limits, not variables.
+//
+#define PspNotifyRoutinesLimit                  64
+#define PspCreateProcessNotifyRoutineExCount    64
+#define PspCreateThreadNotifyRoutineCount       64
+#define PspLoadImageNotifyRoutineCount          64
+
+typedef struct _NOTIFICATION_CALLBACKS {
+    ULONG_PTR PspCreateProcessNotifyRoutine;
+    ULONG_PTR PspCreateThreadNotifyRoutine;
+    ULONG_PTR PspLoadImageNotifyRoutine;
+    ULONG_PTR KeBugCheckCallbackHead;
+    ULONG_PTR KeBugCheckReasonCallbackHead;
+    ULONG_PTR CmCallbackListHead;
+    ULONG_PTR IopNotifyShutdownQueueHead;
+    ULONG_PTR IopNotifyLastChanceShutdownQueueHead;
+    ULONG_PTR ObProcessCallbackHead;
+    ULONG_PTR ObThreadCallbackHead;
+    ULONG_PTR ObDesktopCallbackHead;
+} NOTIFICATION_CALLBACKS, *PNOTIFICATION_CALLBACKS;
+
+extern NOTIFICATION_CALLBACKS g_NotifyCallbacks;
+
 // return true to stop enumeration
 typedef BOOL(CALLBACK *PENUMERATE_COLLECTION_CALLBACK)(
     _In_ POBJREF CollectionEntry,
-    _In_ PVOID Context
+    _In_opt_ PVOID Context
     );
 
 // return true to stop enumeration
 typedef BOOL(CALLBACK *PENUMERATE_BOUNDARY_DESCRIPTOR_CALLBACK)(
     _In_ OBJECT_BOUNDARY_ENTRY *Entry,
-    _In_ PVOID Context
+    _In_opt_ PVOID Context
     );
+
+/*
+* ObGetObjectFastReference
+*
+* Purpose:
+*
+* Return unbiased pointer.
+*
+*/
+__forceinline PVOID ObGetObjectFastReference(
+    _In_ EX_FAST_REF FastRef)
+{
+    return (PVOID)(FastRef.Value & ~MAX_FAST_REFS);
+}
 
 NTSTATUS ObCopyBoundaryDescriptor(
     _In_ OBJECT_NAMESPACE_ENTRY *NamespaceLookupEntry,
@@ -163,11 +202,19 @@ UCHAR ObDecodeTypeIndex(
     _In_ PVOID Object,
     _In_ UCHAR EncodedTypeIndex);
 
+_Success_(return != NULL)
+PVOID ObDumpObjectTypeVersionAware(
+    _In_ ULONG_PTR ObjectAddress,
+    _Out_ PULONG Size,
+    _Out_ PULONG Version);
+
+_Success_(return != NULL)
 PVOID ObDumpAlpcPortObjectVersionAware(
     _In_ ULONG_PTR ObjectAddress,
     _Out_ PULONG Size,
     _Out_ PULONG Version);
 
+_Success_(return != NULL)
 PVOID ObDumpDirectoryObjectVersionAware(
     _In_ ULONG_PTR ObjectAddress,
     _Out_ PULONG Size,
@@ -211,16 +258,20 @@ VOID ObCollectionDestroy(
 BOOL ObCollectionEnumerate(
     _In_ POBJECT_COLLECTION Collection,
     _In_ PENUMERATE_COLLECTION_CALLBACK Callback,
-    _In_ PVOID Context);
+    _In_opt_ PVOID Context);
 
 POBJREF ObCollectionFindByAddress(
     _In_ POBJECT_COLLECTION Collection,
     _In_ ULONG_PTR ObjectAddress,
     _In_ BOOLEAN fNamespace);
 
+PVOID ObGetCallbackBlockRoutine(
+    _In_ PVOID CallbackBlock);
+
 PVOID kdQueryIopInvalidDeviceRequest(
     VOID);
 
+_Success_(return == TRUE)
 BOOL kdFindKiServiceTables(
     _In_ ULONG_PTR MappedImageBase,
     _In_ ULONG_PTR KernelImageBase,

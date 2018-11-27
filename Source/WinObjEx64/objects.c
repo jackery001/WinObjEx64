@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        19 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -175,8 +175,7 @@ HIMAGELIST ObManagerLoadImageList(
             
             imageIndex = TYPE_RESOURCE_IMAGE_INDEX_START + g_ObjectTypes[i].ImageIndex;
             
-            hIcon = LoadImage(
-                g_WinObj.hInstance, 
+            hIcon = (HICON)LoadImage(g_WinObj.hInstance, 
                 MAKEINTRESOURCE(imageIndex), 
                 IMAGE_ICON, 
                 16, 

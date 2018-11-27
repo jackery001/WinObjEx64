@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        21 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -53,7 +53,7 @@ ULONG g_cHeapAlloc = 0;
 * Wrapper for RtlAllocateHeap with WinObjEx heap.
 *
 */
-#ifndef _DEBUG
+#ifndef _PROFILE_MEMORY_USAGE_
 FORCEINLINE PVOID supHeapAlloc(
     _In_ SIZE_T Size)
 {
@@ -104,7 +104,7 @@ PVOID supHeapAlloc(
 * Wrapper for RtlFreeHeap with WinObjEx heap.
 *
 */
-#ifndef _DEBUG
+#ifndef _PROFILE_MEMORY_USAGE_
 FORCEINLINE BOOL supHeapFree(
     _In_ PVOID Memory)
 {
@@ -282,12 +282,13 @@ VOID supClipboardCopy(
         dwSize = cbText + sizeof(UNICODE_NULL);
         hglbCopy = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, dwSize);
         if (hglbCopy != NULL) {
-            lptstrCopy = GlobalLock(hglbCopy);
+            lptstrCopy = (LPWSTR)GlobalLock(hglbCopy);
             if (lptstrCopy) {
                 supCopyMemory(lptstrCopy, dwSize, lpText, cbText);
             }
             GlobalUnlock(hglbCopy);
-            SetClipboardData(CF_UNICODETEXT, hglbCopy);
+            if (!SetClipboardData(CF_UNICODETEXT, hglbCopy))
+                GlobalFree(hglbCopy);
         }
         CloseClipboard();
     }
@@ -358,8 +359,10 @@ BOOL supDumpSyscallTableConverted(
 
     LONG32 Offset;
 
+    *Table = NULL;
+
     memIO = ServiceLimit * sizeof(ULONG);
-    
+
     ServiceTableDumped = (PULONG)supHeapAlloc(memIO);
     if (ServiceTableDumped) {
         bytesRead = 0;
@@ -401,7 +404,7 @@ VOID supShowHelp(
     DWORD   dwSize, dwType = 0;
     HKEY    hKey;
     LRESULT lRet;
-    HANDLE  hHtmlOcx;
+    HMODULE hHtmlOcx;
     LPWSTR  s;
     WCHAR   szOcxPath[MAX_PATH + 1];
     WCHAR   szBuffer[MAX_PATH * 2];
@@ -417,7 +420,7 @@ VOID supShowHelp(
     _strcat(szHelpFile, L"\\winobjex64.chm");
 
     if (!PathFileExists(szHelpFile)) {
-        s = supHeapAlloc((MAX_PATH * 2) + (_strlen(szHelpFile) * sizeof(WCHAR)));
+        s = (LPWSTR)supHeapAlloc((MAX_PATH * 2) + (_strlen(szHelpFile) * sizeof(WCHAR)));
         if (s) {
             _strcpy(s, TEXT("Help file could not be found - "));
             _strcat(s, szHelpFile);
@@ -804,9 +807,9 @@ LPWSTR supGetItemText(
             supHeapFree(item.pszText);
             item.pszText = NULL;
         }
-        item.pszText = supHeapAlloc(len * sizeof(WCHAR));
+        item.pszText = (LPWSTR)supHeapAlloc(len * sizeof(WCHAR));
         sz = SendMessage(ListView, LVM_GETITEMTEXT, (WPARAM)item.iItem, (LPARAM)&item);
-    } while (sz == len - 1);
+    } while (sz == (LPARAM)len - 1);
 
     //empty string
     if (sz == 0) {
@@ -872,7 +875,7 @@ HIMAGELIST supLoadImageList(
     list = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, TYPE_LAST, 8);
     if (list) {
         for (i = FirstId; i <= LastId; i++) {
-            hIcon = LoadImage(hInst, MAKEINTRESOURCE(i), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
+            hIcon = (HICON)LoadImage(hInst, MAKEINTRESOURCE(i), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
             if (hIcon) {
                 ImageList_ReplaceIcon(list, -1, hIcon);
                 DestroyIcon(hIcon);
@@ -1031,25 +1034,27 @@ BOOL supUserIsFullAdmin(
     SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
     PSID AdministratorsGroup = NULL;
 
-    status = NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &hToken);
-    if (!NT_SUCCESS(status))
-        return bResult;
+    hToken = supGetCurrentProcessToken();
+    if (hToken == NULL)
+        return FALSE;
 
     do {
-        if (!AllocateAndInitializeSid(
+        if (!NT_SUCCESS(RtlAllocateAndInitializeSid(
             &NtAuthority,
             2,
             SECURITY_BUILTIN_DOMAIN_RID,
             DOMAIN_ALIAS_RID_ADMINS,
             0, 0, 0, 0, 0, 0,
-            &AdministratorsGroup))
+            &AdministratorsGroup)))
+        {
             break;
+        }
 
         status = NtQueryInformationToken(hToken, TokenGroups, NULL, 0, &ReturnLength);
         if (status != STATUS_BUFFER_TOO_SMALL)
             break;
 
-        pTkGroups = supHeapAlloc((SIZE_T)ReturnLength);
+        pTkGroups = (PTOKEN_GROUPS)supHeapAlloc((SIZE_T)ReturnLength);
         if (pTkGroups == NULL)
             break;
 
@@ -1058,7 +1063,7 @@ BOOL supUserIsFullAdmin(
             if (pTkGroups->GroupCount > 0)
                 for (i = 0; i < pTkGroups->GroupCount; i++) {
                     Attributes = pTkGroups->Groups[i].Attributes;
-                    if (EqualSid(AdministratorsGroup, pTkGroups->Groups[i].Sid))
+                    if (RtlEqualSid(AdministratorsGroup, pTkGroups->Groups[i].Sid))
                         if (
                             (Attributes & SE_GROUP_ENABLED) &&
                             (!(Attributes & SE_GROUP_USE_FOR_DENY_ONLY))
@@ -1074,7 +1079,7 @@ BOOL supUserIsFullAdmin(
     } while (cond);
 
     if (AdministratorsGroup != NULL) {
-        FreeSid(AdministratorsGroup);
+        RtlFreeSid(AdministratorsGroup);
     }
 
     NtClose(hToken);
@@ -1281,7 +1286,7 @@ BOOL supxQueryKnownDllsLink(
         }
 
         memIO = bytesNeeded + sizeof(UNICODE_NULL);
-        lpDataBuffer = supHeapAlloc(memIO);
+        lpDataBuffer = (LPWSTR)supHeapAlloc(memIO);
         if (lpKnownDllsBuffer) {
             KnownDlls.Buffer = lpDataBuffer;
             KnownDlls.Length = (USHORT)bytesNeeded;
@@ -1315,11 +1320,11 @@ VOID supInit(
     kdInit(IsFullAdmin);
 
     if (IsFullAdmin) {
-        supCreateSCMSnapshot();
+        supCreateSCMSnapshot(SERVICE_DRIVER, NULL);
     }
 
     sapiCreateSetupDBSnapshot();
-    g_pObjectTypesInfo = supGetObjectTypesInfo();
+    g_pObjectTypesInfo = (POBJECT_TYPES_INFORMATION)supGetObjectTypesInfo();
 
     ExApiSetInit();
 }
@@ -1340,7 +1345,7 @@ VOID supShutdown(
 {
     kdShutdown();
 
-    supFreeSCMSnapshot();
+    supFreeSCMSnapshot(NULL);
     sapiFreeSnapshot();
 
     if (g_pObjectTypesInfo) supHeapFree(g_pObjectTypesInfo);
@@ -1368,9 +1373,9 @@ VOID supQueryKnownDlls(
     g_lpKnownDlls64 = NULL;
 
     RtlInitUnicodeString(&KnownDlls, L"\\KnownDlls32\\KnownDllPath");
-    supxQueryKnownDllsLink(&KnownDlls, &g_lpKnownDlls32);
+    supxQueryKnownDllsLink(&KnownDlls, (PVOID*)&g_lpKnownDlls32);
     RtlInitUnicodeString(&KnownDlls, L"\\KnownDlls\\KnownDllPath");
-    supxQueryKnownDllsLink(&KnownDlls, &g_lpKnownDlls64);
+    supxQueryKnownDllsLink(&KnownDlls, (PVOID*)&g_lpKnownDlls64);
 }
 
 /*
@@ -1390,6 +1395,7 @@ BOOL supEnablePrivilege(
 {
     BOOL             bResult = FALSE;
     NTSTATUS         status;
+    ULONG            dummy;
     HANDLE           hToken;
     TOKEN_PRIVILEGES TokenPrivileges;
 
@@ -1407,7 +1413,7 @@ BOOL supEnablePrivilege(
     TokenPrivileges.Privileges[0].Luid.HighPart = 0;
     TokenPrivileges.Privileges[0].Attributes = (fEnable) ? SE_PRIVILEGE_ENABLED : 0;
     status = NtAdjustPrivilegesToken(hToken, FALSE, &TokenPrivileges,
-        sizeof(TOKEN_PRIVILEGES), (PTOKEN_PRIVILEGES)NULL, NULL);
+        sizeof(TOKEN_PRIVILEGES), (PTOKEN_PRIVILEGES)NULL, (PULONG)&dummy);
     if (status == STATUS_NOT_ALL_ASSIGNED) {
         status = STATUS_PRIVILEGE_NOT_HELD;
     }
@@ -1489,7 +1495,7 @@ BOOL supQueryProcessName(
         PBYTE ListRef;
     } List;
 
-    List.ListRef = ProcessList;
+    List.ListRef = (PBYTE)ProcessList;
 
     do {
 
@@ -1542,9 +1548,9 @@ BOOL supQueryProcessNameByEPROCESS(
         PBYTE ListRef;
     } List;
 
-    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES(NULL, 0);
+    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES((PUNICODE_STRING)NULL, 0);
 
-    List.ListRef = ProcessList;
+    List.ListRef = (PBYTE)ProcessList;
 
     //
     // Calculate process handle list size.
@@ -1560,7 +1566,7 @@ BOOL supQueryProcessNameByEPROCESS(
 
     } while (NextEntryDelta);
 
-    List.ListRef = ProcessList;
+    List.ListRef = (PBYTE)ProcessList;
 
     ProcessListCount = 0;
     NextEntryDelta = 0;
@@ -1568,7 +1574,7 @@ BOOL supQueryProcessNameByEPROCESS(
     //
     // Build process handle list.
     //
-    SavedProcessList = supHeapAlloc(NumberOfProcesses * sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
+    SavedProcessList = (OBEX_PROCESS_LOOKUP_ENTRY*)supHeapAlloc(NumberOfProcesses * sizeof(OBEX_PROCESS_LOOKUP_ENTRY));
     if (SavedProcessList) {
 
         do {
@@ -1637,14 +1643,17 @@ BOOL supQueryProcessNameByEPROCESS(
 *
 * Collects SCM information for drivers description.
 *
+* Use supFreeSCMSnapshot to free returned buffer.
+*
 */
 BOOL supCreateSCMSnapshot(
-    VOID
+    _In_ ULONG ServiceType,
+    _Out_opt_ SCMDB *Snapshot
 )
 {
     BOOL      cond = FALSE, bResult = FALSE;
     SC_HANDLE schSCManager;
-    DWORD     dwBytesNeeded = 0, dwServicesReturned = 0, dwSize, dwSlack;
+    DWORD     dwBytesNeeded = 0, dwServicesReturned = 0, dwSize;
     PVOID     Services = NULL;
 
     do {
@@ -1659,7 +1668,7 @@ BOOL supCreateSCMSnapshot(
         //
         // Query required memory size for snapshot.
         //
-        dwSize = 0x1000;
+        dwSize = PAGE_SIZE;
         Services = supVirtualAlloc(dwSize);
         if (Services == NULL)
             break;
@@ -1667,9 +1676,9 @@ BOOL supCreateSCMSnapshot(
         bResult = EnumServicesStatusEx(
             schSCManager,
             SC_ENUM_PROCESS_INFO,
-            SERVICE_DRIVER,
+            ServiceType,
             SERVICE_STATE_ALL,
-            Services,
+            (LPBYTE)Services,
             dwSize,
             &dwBytesNeeded,
             &dwServicesReturned,
@@ -1682,10 +1691,7 @@ BOOL supCreateSCMSnapshot(
                 // Allocate required buffer.
                 //
                 supVirtualFree(Services);
-                dwSize = (DWORD)(dwBytesNeeded + sizeof(ENUM_SERVICE_STATUS_PROCESS));
-                dwSlack = dwSize % 0x1000;
-                if (dwSlack > 0) dwSize = dwSize + 0x1000 - dwSlack;
-
+                dwSize = ALIGN_UP_BY((DWORD)(dwBytesNeeded + sizeof(ENUM_SERVICE_STATUS_PROCESS)), PAGE_SIZE);
                 Services = supVirtualAlloc(dwSize);
                 if (Services == NULL)
                     break;
@@ -1693,9 +1699,9 @@ BOOL supCreateSCMSnapshot(
                 bResult = EnumServicesStatusEx(
                     schSCManager,
                     SC_ENUM_PROCESS_INFO,
-                    SERVICE_DRIVER,
+                    ServiceType,
                     SERVICE_STATE_ALL,
-                    Services,
+                    (LPBYTE)Services,
                     dwSize,
                     &dwBytesNeeded,
                     &dwServicesReturned,
@@ -1715,10 +1721,16 @@ BOOL supCreateSCMSnapshot(
 
     } while (cond);
 
-    RtlEnterCriticalSection(&g_WinObj.Lock);
-    g_scmDB.Entries = Services;
-    g_scmDB.NumberOfEntries = dwServicesReturned;
-    RtlLeaveCriticalSection(&g_WinObj.Lock);
+    if (Snapshot) {
+        Snapshot->Entries = Services;
+        Snapshot->NumberOfEntries = dwServicesReturned;
+    }
+    else {
+        RtlEnterCriticalSection(&g_WinObj.Lock);
+        g_scmDB.Entries = Services;
+        g_scmDB.NumberOfEntries = dwServicesReturned;
+        RtlLeaveCriticalSection(&g_WinObj.Lock);
+    }
 
     return bResult;
 }
@@ -1732,13 +1744,21 @@ BOOL supCreateSCMSnapshot(
 *
 */
 VOID supFreeSCMSnapshot(
-    VOID)
+    _In_opt_ SCMDB *Snapshot)
 {
-    RtlEnterCriticalSection(&g_WinObj.Lock);
-    supVirtualFree(g_scmDB.Entries);
-    g_scmDB.Entries = NULL;
-    g_scmDB.NumberOfEntries = 0;
-    RtlLeaveCriticalSection(&g_WinObj.Lock);
+    if (Snapshot) {
+        if ((Snapshot->Entries) && (Snapshot->NumberOfEntries))
+            supVirtualFree(Snapshot->Entries);
+        Snapshot->NumberOfEntries = 0;
+        Snapshot->Entries = NULL;
+    }
+    else {
+        RtlEnterCriticalSection(&g_WinObj.Lock);
+        supVirtualFree(g_scmDB.Entries);
+        g_scmDB.Entries = NULL;
+        g_scmDB.NumberOfEntries = 0;
+        RtlLeaveCriticalSection(&g_WinObj.Lock);
+    }
 }
 
 /*
@@ -1768,7 +1788,7 @@ BOOL sapiQueryDeviceProperty(
         *PropertyBufferSize = 0;
 
     dataSize = (1 + MAX_PATH) * sizeof(WCHAR);
-    lpProperty = RtlAllocateHeap(SnapshotHeap, HEAP_ZERO_MEMORY, dataSize);
+    lpProperty = (LPWSTR)RtlAllocateHeap(SnapshotHeap, HEAP_ZERO_MEMORY, dataSize);
     if (lpProperty == NULL)
         return FALSE;
 
@@ -1784,7 +1804,7 @@ BOOL sapiQueryDeviceProperty(
 
         RtlFreeHeap(SnapshotHeap, 0, lpProperty);
         dataSize = returnLength;
-        lpProperty = RtlAllocateHeap(SnapshotHeap, HEAP_ZERO_MEMORY, dataSize);
+        lpProperty = (LPWSTR)RtlAllocateHeap(SnapshotHeap, HEAP_ZERO_MEMORY, dataSize);
         if (lpProperty) {
 
             result = SetupDiGetDeviceRegistryProperty(hDevInfo,
@@ -1850,7 +1870,7 @@ BOOL sapiCreateSetupDBSnapshot(
 
         for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++) {
 
-            Entry = RtlAllocateHeap(Heap, HEAP_ZERO_MEMORY, sizeof(SAPIDBENTRY));
+            Entry = (PSAPIDBENTRY)RtlAllocateHeap(Heap, HEAP_ZERO_MEMORY, sizeof(SAPIDBENTRY));
             if (Entry == NULL) {
                 bFailed = TRUE;
                 break;
@@ -2269,7 +2289,7 @@ BOOL supQueryDeviceDescription(
     // Build full device path.
     //
     Length = (4 + _strlen(lpDeviceName) + _strlen(g_WinObj.CurrentObjectPath)) * sizeof(WCHAR);
-    lpFullDeviceName = supHeapAlloc(Length);
+    lpFullDeviceName = (LPWSTR)supHeapAlloc(Length);
     if (lpFullDeviceName != NULL) {
 
         // create full path device name for comparison
@@ -2401,7 +2421,7 @@ BOOL supQueryDriverDescription(
             sz += supServicesRegPathSize;
             sz = (1 + sz) * sizeof(WCHAR);
 
-            lpRegKey = supHeapAlloc(sz);
+            lpRegKey = (LPWSTR)supHeapAlloc(sz);
             if (lpRegKey == NULL)
                 break;
 
@@ -2436,7 +2456,7 @@ BOOL supQueryDriverDescription(
 
                 // query codepage and language id info
                 dwSize = 0;
-                if (!VerQueryValue(vinfo, VERSION_TRANSLATION, &lpTranslate, (PUINT)&dwSize))
+                if (!VerQueryValue(vinfo, VERSION_TRANSLATION, (LPVOID*)&lpTranslate, (PUINT)&dwSize))
                     break;
 
                 if (dwSize == 0)
@@ -2450,7 +2470,7 @@ BOOL supQueryDriverDescription(
                 // finally query pointer to version_info filedescription block data
                 lpDisplayName = NULL;
                 dwSize = 0;
-                bResult = VerQueryValue(vinfo, szBuffer, &lpDisplayName, (PUINT)&dwSize);
+                bResult = VerQueryValue(vinfo, szBuffer, (LPVOID*)&lpDisplayName, (PUINT)&dwSize);
                 if (bResult) {
                     _strncpy(Buffer, ccBuffer, lpDisplayName, dwSize);
                 }
@@ -2554,7 +2574,7 @@ BOOL supQuerySectionFileInfo(
         // allocate memory buffer to store full filename
         // KnownDlls + \\ + Object->Name + \0 
         cLength = (2 + _strlen(lpszKnownDlls) + _strlen(ObjectName->Buffer)) * sizeof(WCHAR);
-        lpszFileName = supHeapAlloc(cLength);
+        lpszFileName = (LPWSTR)supHeapAlloc(cLength);
         if (lpszFileName == NULL)
             break;
 
@@ -2578,7 +2598,7 @@ BOOL supQuerySectionFileInfo(
             break;
 
         // query codepage and language id info
-        if (!VerQueryValue(vinfo, VERSION_TRANSLATION, &lpTranslate, (PUINT)&dwInfoSize))
+        if (!VerQueryValue(vinfo, VERSION_TRANSLATION, (LPVOID*)&lpTranslate, (PUINT)&dwInfoSize))
             break;
         if (dwInfoSize == 0)
             break;
@@ -2591,7 +2611,7 @@ BOOL supQuerySectionFileInfo(
         // finally query pointer to version_info filedescription block data
         pcValue = NULL;
         dwInfoSize = 0;
-        bResult = VerQueryValue(vinfo, szQueryBlock, &pcValue, (PUINT)&dwInfoSize);
+        bResult = VerQueryValue(vinfo, szQueryBlock, (LPVOID*)&pcValue, (PUINT)&dwInfoSize);
         if (bResult) {
             _strncpy(Buffer, ccBuffer, pcValue, dwInfoSize);
         }
@@ -2680,7 +2700,7 @@ HANDLE supOpenDirectoryForObject(
         //  e.g. lpDirectory = \ObjectTypes, lpObjectName = ObjectTypes then lpDirectory = \ 
         //
         ldirSz = rdirLen * sizeof(WCHAR) + sizeof(UNICODE_NULL);
-        LookupDirName = supHeapAlloc(ldirSz);
+        LookupDirName = (LPWSTR)supHeapAlloc(ldirSz);
         if (LookupDirName == NULL)
             return NULL;
 
@@ -2940,14 +2960,14 @@ ULONG_PTR supQuerySystemRangeStart(
 }
 
 /*
-* supConvertFileName
+* supxConvertFileName
 *
 * Purpose:
 *
 * Translate Nt path name to Dos path name.
 *
 */
-BOOL supConvertFileName(
+BOOL supxConvertFileName(
     _In_ LPWSTR NtFileName,
     _In_ LPWSTR DosFileName,
     _In_ SIZE_T ccDosFileName
@@ -3039,7 +3059,7 @@ BOOL supGetWin32FileName(
         if (status != STATUS_INFO_LENGTH_MISMATCH)
             break;
 
-        Buffer = supHeapAlloc(memIO);
+        Buffer = (BYTE*)supHeapAlloc(memIO);
         if (Buffer == NULL)
             break;
 
@@ -3047,7 +3067,7 @@ BOOL supGetWin32FileName(
         if (!NT_SUCCESS(status))
             break;
 
-        if (!supConvertFileName(((PUNICODE_STRING)Buffer)->Buffer, Win32FileName, ccWin32FileName))
+        if (!supxConvertFileName(((PUNICODE_STRING)Buffer)->Buffer, Win32FileName, ccWin32FileName))
             break;
 
         bResult = TRUE;
@@ -3075,7 +3095,7 @@ BOOL supIsWine(
     VOID
 )
 {
-    HANDLE hNtdll;
+    HMODULE hNtdll;
     FARPROC  WineVersion = NULL;
 
     hNtdll = GetModuleHandle(TEXT("ntdll.dll"));
@@ -3310,7 +3330,7 @@ BOOL supQueryObjectTrustLabel(
         // Locate trust label ace.
         //
         for (i = 0; i < aclSize.AceCount; i++) {
-            if (NT_SUCCESS(RtlGetAce(sacl, i, (LPVOID)&aceHeader))) {
+            if (NT_SUCCESS(RtlGetAce(sacl, i, (PVOID*)&aceHeader))) {
                 if (aceHeader->AceType == SYSTEM_PROCESS_TRUST_LABEL_ACE_TYPE) {
                     ace = (SYSTEM_PROCESS_TRUST_LABEL_ACE*)aceHeader;
                     aceSID = (PSID)(&ace->SidStart);
@@ -3330,6 +3350,80 @@ BOOL supQueryObjectTrustLabel(
 }
 
 /*
+* supQueryTokenUserSid
+*
+* Purpose:
+*
+* Return SID of given token.
+*
+* Use supHeapFree to free memory allocated for result.
+*
+*/
+PSID supQueryTokenUserSid(
+    _In_ HANDLE hProcessToken
+)
+{
+    PSID result = NULL;
+    PTOKEN_USER ptu;
+    NTSTATUS status;
+    ULONG LengthNeeded = 0;
+
+    status = NtQueryInformationToken(hProcessToken, TokenUser,
+        NULL, 0, &LengthNeeded);
+
+    if (status == STATUS_BUFFER_TOO_SMALL) {
+
+        ptu = (PTOKEN_USER)supHeapAlloc(LengthNeeded);
+
+        if (ptu) {
+
+            status = NtQueryInformationToken(hProcessToken, TokenUser,
+                ptu, LengthNeeded, &LengthNeeded);
+
+            if (NT_SUCCESS(status)) {
+                LengthNeeded = SECURITY_MAX_SID_SIZE;
+                result = supHeapAlloc(LengthNeeded);
+                if (result) {
+                    status = RtlCopySid(LengthNeeded, result, ptu->User.Sid);
+                }
+            }
+
+            supHeapFree(ptu);
+        }
+    }
+
+    return (NT_SUCCESS(status)) ? result : NULL;
+}
+
+/*
+* supQueryProcessSid
+*
+* Purpose:
+*
+* Return SID for the given process.
+*
+* Use supHeapFree to free memory allocated for result.
+*
+*/
+PSID supQueryProcessSid(
+    _In_ HANDLE hProcess
+)
+{
+    HANDLE hProcessToken = NULL;
+    PSID result = NULL;
+
+
+    if (NT_SUCCESS(NtOpenProcessToken(hProcess, TOKEN_QUERY, &hProcessToken))) {
+
+        result = supQueryTokenUserSid(hProcessToken);
+
+        NtClose(hProcessToken);
+    }
+
+    return result;
+}
+
+/*
 * supIsLocalSystem
 *
 * Purpose:
@@ -3343,61 +3437,28 @@ NTSTATUS supIsLocalSystem(
     _In_ HANDLE hToken,
     _Out_ PBOOL pbResult)
 {
-    BOOL                            bResult = FALSE;
+    BOOL                     bResult = FALSE;
+    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
+    PSID                     SystemSid = NULL, TokenSid = NULL;
+    SID_IDENTIFIER_AUTHORITY NtAuth = SECURITY_NT_AUTHORITY;
 
-    NTSTATUS                        status = STATUS_UNSUCCESSFUL;
-    HANDLE                          ProcessHeap = NtCurrentPeb()->ProcessHeap;
+    TokenSid = supQueryTokenUserSid(hToken);
+    if (TokenSid == NULL)
+        return status;
 
-    ULONG                           LengthNeeded = 0;
+    status = RtlAllocateAndInitializeSid(
+        &NtAuth,
+        1,
+        SECURITY_LOCAL_SYSTEM_RID,
+        0, 0, 0, 0, 0, 0, 0,
+        &SystemSid);
 
-    PSID                            SystemSid = NULL;
-    PTOKEN_USER                     ptu = NULL;
-    SID_IDENTIFIER_AUTHORITY        NtAuth = SECURITY_NT_AUTHORITY;
+    if (NT_SUCCESS(status)) {
+        bResult = RtlEqualSid(TokenSid, SystemSid);
+        RtlFreeSid(SystemSid);
+    }
 
-    status = NtQueryInformationToken(
-        hToken,
-        TokenUser,
-        NULL,
-        0,
-        &LengthNeeded);
-
-    if (status == STATUS_BUFFER_TOO_SMALL) {
-
-        ptu = (PTOKEN_USER)RtlAllocateHeap(
-            ProcessHeap,
-            HEAP_ZERO_MEMORY,
-            LengthNeeded);
-
-        if (ptu) {
-
-            status = NtQueryInformationToken(
-                hToken,
-                TokenUser,
-                ptu,
-                LengthNeeded,
-                &LengthNeeded);
-
-            if (NT_SUCCESS(status)) {
-
-                status = RtlAllocateAndInitializeSid(
-                    &NtAuth,
-                    1,
-                    SECURITY_LOCAL_SYSTEM_RID,
-                    0, 0, 0, 0, 0, 0, 0,
-                    &SystemSid);
-
-                if (NT_SUCCESS(status)) {
-                    bResult = RtlEqualSid(ptu->User.Sid, SystemSid);
-                    RtlFreeSid(SystemSid);
-                }
-
-            }
-            RtlFreeHeap(ProcessHeap, 0, ptu);
-        }
-        else {
-            status = STATUS_INSUFFICIENT_RESOURCES;
-        }
-    } //STATUS_BUFFER_TOO_SMALL
+    supHeapFree(TokenSid);
 
     if (pbResult)
         *pbResult = bResult;
@@ -3421,14 +3482,14 @@ HANDLE supxGetSystemToken(
     HANDLE hObject = NULL;
     HANDLE hToken = NULL;
 
-    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES(NULL, 0);
+    OBJECT_ATTRIBUTES obja = RTL_INIT_OBJECT_ATTRIBUTES((PUNICODE_STRING)NULL, 0);
 
     union {
         PSYSTEM_PROCESSES_INFORMATION Processes;
         PBYTE ListRef;
     } List;
 
-    List.ListRef = ProcessList;
+    List.ListRef = (PBYTE)ProcessList;
 
     do {
 
@@ -3485,7 +3546,7 @@ BOOL supRunAsLocalSystem(
 {
     BOOL bCond = FALSE, bSuccess = FALSE;
     PVOID ProcessList;
-    ULONG SessionId = NtCurrentPeb()->SessionId;
+    ULONG SessionId = NtCurrentPeb()->SessionId, dummy;
 
     HANDLE hSystemToken, hPrimaryToken = NULL, hImpersonationToken = NULL;
 
@@ -3585,7 +3646,8 @@ BOOL supRunAsLocalSystem(
         //
         // Turn on AssignPrimaryToken privilege in impersonated token.
         //
-        TokenPrivileges = _alloca(sizeof(TOKEN_PRIVILEGES) + (1 * sizeof(LUID_AND_ATTRIBUTES)));
+        TokenPrivileges = (TOKEN_PRIVILEGES*)_alloca(sizeof(TOKEN_PRIVILEGES) +
+            (1 * sizeof(LUID_AND_ATTRIBUTES)));
 
         TokenPrivileges->PrivilegeCount = 1;
         TokenPrivileges->Privileges[0].Luid.LowPart = SE_ASSIGNPRIMARYTOKEN_PRIVILEGE;
@@ -3598,7 +3660,7 @@ BOOL supRunAsLocalSystem(
             TokenPrivileges,
             0,
             NULL,
-            NULL)))
+            (PULONG)&dummy)))
         {
             break;
         }
@@ -3780,7 +3842,7 @@ PVOID supFindPattern(
     BufferSize -= PatternSize;
 
     do {
-        p = memchr(p, Pattern[0], BufferSize - (p - Buffer));
+        p = (PBYTE)memchr(p, Pattern[0], BufferSize - (p - Buffer));
         if (p == NULL)
             break;
 
@@ -4157,5 +4219,51 @@ VOID supShowLastError(
     {
         MessageBox(hWnd, lpMsgBuf, Source, MB_TOPMOST | MB_ICONERROR);
         LocalFree(lpMsgBuf);
+    }
+}
+
+/*
+* supCopyTreeListSubItemValue
+*
+* Purpose:
+*
+* Copy treelist value to the clipboard.
+*
+*/
+VOID supCopyTreeListSubItemValue(
+    _In_ HWND TreeList,
+    _In_ UINT ValueIndex
+)
+{
+    SIZE_T             cbText;
+    LPWSTR             lpText;
+    TL_SUBITEMS_FIXED *subitems;
+    TVITEMEX           itemex;
+    WCHAR              textbuf[MAX_PATH + 1];
+
+    __try {
+
+        RtlSecureZeroMemory(&itemex, sizeof(itemex));
+        RtlSecureZeroMemory(textbuf, sizeof(textbuf));
+        subitems = NULL;
+        itemex.mask = TVIF_TEXT;
+        itemex.hItem = TreeList_GetSelection(TreeList);
+        itemex.pszText = textbuf;
+        itemex.cchTextMax = MAX_PATH;
+
+        TreeList_GetTreeItem(TreeList, &itemex, &subitems);
+
+        if (subitems) {
+            if (ValueIndex < subitems->Count) {
+                lpText = subitems->Text[ValueIndex];
+                if (lpText) {
+                    cbText = _strlen(lpText) * sizeof(WCHAR);
+                    supClipboardCopy(lpText, cbText);
+                }
+            }
+        }
+    }
+    __except (exceptFilter(GetExceptionCode(), GetExceptionInformation())) {
+        return;
     }
 }

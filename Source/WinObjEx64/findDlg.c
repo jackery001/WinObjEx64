@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        22 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -402,7 +402,7 @@ VOID FindDlgAddTypes(
 
         for (i = 0; i < g_pObjectTypesInfo->NumberOfTypes; i++) {
             sz = pObject->TypeName.MaximumLength + sizeof(UNICODE_NULL);
-            lpType = supHeapAlloc(sz);
+            lpType = (LPWSTR)supHeapAlloc(sz);
             if (lpType) {
 
                 _strncpy(lpType,
@@ -454,7 +454,7 @@ VOID FindDlgCreate(
 
     //set dialog icon, because we use shared dlg template this icon must be
     //removed after use, see aboutDlg/propDlg.
-    hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_MAIN), IMAGE_ICON, 0, 0, LR_SHARED);
+    hIcon = (HICON)LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_MAIN), IMAGE_ICON, 0, 0, LR_SHARED);
     if (hIcon) {
         SetClassLongPtr(g_WinObj.AuxDialogs[wobjFindDlgId], GCLP_HICON, (LONG_PTR)hIcon);
         DestroyIcon(hIcon);

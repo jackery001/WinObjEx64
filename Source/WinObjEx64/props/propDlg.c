@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        23 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -56,10 +56,10 @@ BOOL propCloseCurrentObject(
 
     switch (Context->TypeIndex) {
     case ObjectTypeWinstation:
-        bResult = CloseWindowStation(hObject);
+        bResult = CloseWindowStation((HWINSTA)hObject);
         break;
     case ObjectTypeDesktop:
-        bResult = CloseDesktop(hObject);
+        bResult = CloseDesktop((HDESK)hObject);
         break;
     default:
         bResult = NT_SUCCESS(NtClose(hObject));
@@ -272,7 +272,7 @@ PPROP_OBJECT_INFO propContextCreate(
         //
         // Allocate context structure.
         //
-        Context = supHeapAlloc(sizeof(PROP_OBJECT_INFO));
+        Context = (PROP_OBJECT_INFO*)supHeapAlloc(sizeof(PROP_OBJECT_INFO));
         if (Context == NULL)
             return NULL;
 
@@ -281,7 +281,7 @@ PPROP_OBJECT_INFO propContextCreate(
         //
         if (lpObjectName) {
 
-            Context->lpObjectName = supHeapAlloc((1 + _strlen(lpObjectName)) * sizeof(WCHAR));
+            Context->lpObjectName = (LPWSTR)supHeapAlloc((1 + _strlen(lpObjectName)) * sizeof(WCHAR));
             if (Context->lpObjectName) {
                 _strcpy(Context->lpObjectName, lpObjectName);
                 bSelectedObject = (_strcmpi(Context->lpObjectName, TEXT("ObjectTypes")) == 0);
@@ -292,7 +292,7 @@ PPROP_OBJECT_INFO propContextCreate(
         // Copy object type if given.
         //
         if (lpObjectType) {
-            Context->lpObjectType = supHeapAlloc((1 + _strlen(lpObjectType)) * sizeof(WCHAR));
+            Context->lpObjectType = (LPWSTR)supHeapAlloc((1 + _strlen(lpObjectType)) * sizeof(WCHAR));
             if (Context->lpObjectType) {
                 _strcpy(Context->lpObjectType, lpObjectType);
             }
@@ -303,7 +303,7 @@ PPROP_OBJECT_INFO propContextCreate(
         // Copy CurrentObjectPath if given, as it can change because dialog is modeless.
         //
         if (lpCurrentObjectPath) {
-            Context->lpCurrentObjectPath = supHeapAlloc((1 + _strlen(lpCurrentObjectPath)) * sizeof(WCHAR));
+            Context->lpCurrentObjectPath = (LPWSTR)supHeapAlloc((1 + _strlen(lpCurrentObjectPath)) * sizeof(WCHAR));
             if (Context->lpCurrentObjectPath) {
                 _strcpy(Context->lpCurrentObjectPath, lpCurrentObjectPath);
                 bSelectedDirectory = (_strcmpi(Context->lpCurrentObjectPath, T_OBJECTTYPES) == 0);
@@ -314,7 +314,7 @@ PPROP_OBJECT_INFO propContextCreate(
         // Copy object description, could be NULL.
         //
         if (lpDescription) {
-            Context->lpDescription = supHeapAlloc((1 + _strlen(lpDescription)) * sizeof(WCHAR));
+            Context->lpDescription = (LPWSTR)supHeapAlloc((1 + _strlen(lpDescription)) * sizeof(WCHAR));
             if (Context->lpDescription) {
                 _strcpy(Context->lpDescription, lpDescription);
             }
@@ -417,8 +417,10 @@ LRESULT WINAPI PropSheetCustomWndProc(
         break;
 
     case WM_DESTROY:
-        Context = GetProp(hwnd, T_PROPCONTEXT);
-        propContextDestroy(Context);
+        Context = (PROP_OBJECT_INFO*)GetProp(hwnd, T_PROPCONTEXT);
+        if (Context) {
+            propContextDestroy(Context);
+        }
         RemoveProp(hwnd, T_PROPCONTEXT);
         break;
 
@@ -604,6 +606,7 @@ VOID propCreateDialog(
         case ObjectTypeIoCompletion:
         case ObjectTypeFltConnPort:
         case ObjectTypeType:
+        case ObjectTypeCallback:
             RtlSecureZeroMemory(&Page, sizeof(Page));
             Page.dwSize = sizeof(PROPSHEETPAGE);
             Page.dwFlags = PSP_DEFAULT | PSP_USETITLE;

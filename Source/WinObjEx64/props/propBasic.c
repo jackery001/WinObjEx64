@@ -4,9 +4,9 @@
 *
 *  TITLE:       PROPBASIC.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        22 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -173,7 +173,7 @@ VOID propSetDefaultInfo(
             break;
         }
 
-        TypeInfo = supHeapAlloc(bytesNeeded + sizeof(ULONG_PTR));
+        TypeInfo = (POBJECT_TYPE_INFORMATION)supHeapAlloc(bytesNeeded + sizeof(ULONG_PTR));
         if (TypeInfo == NULL)
             break;
 
@@ -970,7 +970,7 @@ VOID propBasicQueryWindowStation(
     // Open Winstation object.
     //
     hObject = NULL;
-    if (!propOpenCurrentObject(Context, &hObject, WINSTA_READATTRIBUTES)) {
+    if (!propOpenCurrentObject(Context, (PHANDLE)&hObject, WINSTA_READATTRIBUTES)) {
         return;
     }
 
@@ -1128,8 +1128,7 @@ VOID propBasicQueryAlpcPort(
         return;
     }
 
-    AlpcPort.Ref = ObDumpAlpcPortObjectVersionAware(
-        Context->ObjectInfo.ObjectAddress,
+    AlpcPort.Ref = (PBYTE)ObDumpAlpcPortObjectVersionAware(Context->ObjectInfo.ObjectAddress,
         &ObjectSize,
         &ObjectVersion);
 
@@ -1281,7 +1280,7 @@ VOID propBasicQueryJob(
 
             //allocate default size
             bytesNeeded = PAGE_SIZE;
-            pJobProcList = supVirtualAlloc(bytesNeeded);
+            pJobProcList = (PJOBOBJECT_BASIC_PROCESS_ID_LIST)supVirtualAlloc(bytesNeeded);
             if (pJobProcList == NULL)
                 break;
 
@@ -1295,7 +1294,7 @@ VOID propBasicQueryJob(
             if (status == STATUS_BUFFER_OVERFLOW) {
 
                 supVirtualFree(pJobProcList);
-                pJobProcList = supVirtualAlloc(bytesNeeded);
+                pJobProcList = (PJOBOBJECT_BASIC_PROCESS_ID_LIST)supVirtualAlloc(bytesNeeded);
                 if (pJobProcList == NULL)
                     break;
 
@@ -1515,7 +1514,7 @@ VOID propBasicQueryDesktop(
     if (bExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hDesktop);
     }
-    CloseDesktop(hDesktop);
+    CloseDesktop((HDESK)hDesktop);
 }
 
 /*
@@ -1683,7 +1682,7 @@ INT_PTR CALLBACK BasicPropDialogProc(
 
     case WM_SHOWWINDOW:
         if (wParam) {
-            Context = GetProp(hwndDlg, T_PROPCONTEXT);
+            Context = (PROP_OBJECT_INFO*)GetProp(hwndDlg, T_PROPCONTEXT);
             if (Context) {
                 propSetBasicInfo(Context, hwndDlg);
             }
@@ -1693,11 +1692,14 @@ INT_PTR CALLBACK BasicPropDialogProc(
 
     case WM_PAINT:
 
-        Context = GetProp(hwndDlg, T_PROPCONTEXT);
+        Context = (PROP_OBJECT_INFO*)GetProp(hwndDlg, T_PROPCONTEXT);
         if (Context) {
             hDc = BeginPaint(hwndDlg, &Paint);
             if (hDc) {
-                ImageList_Draw(g_ListViewImages, Context->TypeIndex, hDc, 24, 34, ILD_NORMAL | ILD_TRANSPARENT);
+                
+                ImageList_Draw(g_ListViewImages, Context->TypeIndex, hDc, 24, 34, 
+                    ILD_NORMAL | ILD_TRANSPARENT);
+
                 EndPaint(hwndDlg, &Paint);
             }
         }

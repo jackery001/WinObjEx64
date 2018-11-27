@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        08 Nov 2018
+*  DATE:        23 Nov 2018
 *
 *  Common header file for Extras dialogs.
 *
@@ -84,4 +84,7 @@ VOID extrasShowDriversDialog(
     _In_ HWND hwndParent);
 
 VOID extrasShowPsListDialog(
+    _In_ HWND hwndParent);
+
+VOID extrasShowCallbacksDialog(
     _In_ HWND hwndParent);

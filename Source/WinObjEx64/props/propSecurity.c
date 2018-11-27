@@ -4,9 +4,9 @@
 *
 *  TITLE:       PROPSECURITY.C
 *
-*  VERSION:     1.60
+*  VERSION:     1.61
 *
-*  DATE:        24 Oct 2018
+*  DATE:        22 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -204,10 +204,10 @@ VOID propDefaultCloseObject(
     if ((hObject != NULL) && (This->ObjectContext)) {
         switch (This->ObjectContext->TypeIndex) {
         case ObjectTypeWinstation:
-            CloseWindowStation(hObject);
+            CloseWindowStation((HWINSTA)hObject);
             break;
         case ObjectTypeDesktop:
-            CloseDesktop(hObject);
+            CloseDesktop((HDESK)hObject);
             break;
         default:
             NtClose(hObject);
@@ -222,8 +222,13 @@ HRESULT STDMETHODCALLTYPE QueryInterface(
     _Out_ void **ppvObject
 )
 {
+#if defined(__cplusplus)
+    if (IsEqualIID(riid, IID_ISecurityInformation) ||
+        IsEqualIID(riid, IID_IUnknown))
+#else
     if (IsEqualIID(riid, &IID_ISecurityInformation) ||
         IsEqualIID(riid, &IID_IUnknown))
+#endif
     {
         *ppvObject = This;
         This->lpVtbl->AddRef(This);
@@ -460,7 +465,7 @@ HRESULT propSecurityConstructor(
 
         //if no close method specified, use default
         if (CloseObjectMethod == NULL) {
-            This->CloseObjectMethod = propDefaultCloseObject;
+            This->CloseObjectMethod = (PCLOSEOBJECTMETHOD)propDefaultCloseObject;
         }
         else {
             This->CloseObjectMethod = CloseObjectMethod;
@@ -478,7 +483,7 @@ HRESULT propSecurityConstructor(
             break;
         }
 
-        TypeInfo = supHeapAlloc(bytesNeeded);
+        TypeInfo = (POBJECT_TYPE_INFORMATION)supHeapAlloc(bytesNeeded);
         if (TypeInfo == NULL) {
             hResult = HRESULT_FROM_WIN32(GetLastError());
             break;
@@ -506,7 +511,7 @@ HRESULT propSecurityConstructor(
 
         //allocate access table
         Size = (MAX_KNOWN_GENERAL_ACCESS_VALUE + (SIZE_T)This->dwAccessMax) * sizeof(SI_ACCESS);
-        This->AccessTable = supHeapAlloc(Size);
+        This->AccessTable = (PSI_ACCESS)supHeapAlloc(Size);
         if (This->AccessTable == NULL) {
             hResult = HRESULT_FROM_WIN32(GetLastError());
             break;
@@ -591,7 +596,7 @@ HPROPSHEETPAGE propSecurityCreatePage(
         return NULL;
     }
 
-    psi = supHeapAlloc(sizeof(IObjectSecurity));
+    psi = (IObjectSecurity*)supHeapAlloc(sizeof(IObjectSecurity));
     if (psi == NULL)
         return NULL;
 

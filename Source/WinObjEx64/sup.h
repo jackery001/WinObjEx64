@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        18 Nov 2018
 *
 *  Common header file for the program support routines.
 *
@@ -38,7 +38,10 @@ typedef struct _ENUMICONINFO {
 
 typedef struct _OBEX_PROCESS_LOOKUP_ENTRY {
     HANDLE hProcess;
-    PUCHAR EntryPtr;
+    union {
+        PUCHAR EntryPtr;
+        PSYSTEM_PROCESSES_INFORMATION ProcessInformation;
+    };
 } OBEX_PROCESS_LOOKUP_ENTRY, *POBEX_PROCESS_LOOKUP_ENTRY;
 
 //
@@ -106,6 +109,7 @@ BOOL supInitTreeListForDump(
 VOID supShowHelp(
     _In_ HWND ParentWindow);
 
+_Success_(return != FALSE)
 BOOL supQueryObjectFromHandle(
     _In_ HANDLE hOject,
     _Out_ ULONG_PTR *Address,
@@ -281,10 +285,11 @@ BOOL supDumpSyscallTableConverted(
     _Out_ PUTable *Table);
 
 BOOL supCreateSCMSnapshot(
-    VOID);
+    _In_ ULONG ServiceType,
+    _Out_opt_ SCMDB *Snapshot);
 
 VOID supFreeSCMSnapshot(
-    VOID);
+    _In_opt_ SCMDB *Snapshot);
 
 BOOL sapiCreateSetupDBSnapshot(
     VOID);
@@ -407,3 +412,13 @@ VOID supShowLastError(
     _In_ HWND hWnd,
     _In_ LPWSTR Source,
     _In_ DWORD LastError);
+
+PSID supQueryTokenUserSid(
+    _In_ HANDLE hProcessToken);
+
+PSID supQueryProcessSid(
+    _In_ HANDLE hProcess);
+
+VOID supCopyTreeListSubItemValue(
+    _In_ HWND TreeList,
+    _In_ UINT ValueIndex);

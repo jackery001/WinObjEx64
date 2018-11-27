@@ -4,9 +4,9 @@
 *
 *  TITLE:       TREELIST.C
 *
-*  VERSION:     1.21
+*  VERSION:     1.22
 *
-*  DATE:        04 Nov 2018
+*  DATE:        19 Nov 2018
 *
 *  TreeList control.
 *
@@ -63,7 +63,8 @@ VOID TreeListUpdateTooltips(
     PTL_SUBITEMS	subitems;
     RECT			rc, subrc, treerc;
     TOOLINFO		tool;
-    ULONG			i, ToolCount, newToolId;
+    ULONG			ToolCount, newToolId;
+    SIZE_T          i;
     LONG			cx;
     TVITEMEX		itemex;
     HWND			TreeControl = (HWND)GetWindowLongPtr(hwndTreeList, TL_TREECONTROL_SLOT),
@@ -254,8 +255,16 @@ LRESULT TreeListCustomDraw(
                     subr.left = hr.left + 3;
                     subr.right = hr.right - 3;
 
-                    if ((hdritem.lParam != 0) && (!ItemSelected))
-                        SetBkColor(pdraw->nmcd.hdc, (COLORREF)hdritem.lParam);
+                    if (!ItemSelected)
+                    {
+                        if (subitem->ColorFlags & TLF_BGCOLOR_SET) {
+                            pdraw->clrTextBk = subitem->BgColor;
+                            SetBkColor(pdraw->nmcd.hdc, subitem->BgColor);
+                        }
+
+                        if (hdritem.lParam != 0)
+                            SetBkColor(pdraw->nmcd.hdc, (COLORREF)hdritem.lParam);
+                    }
 
                     DrawText(pdraw->nmcd.hdc, subitem->Text[i - 1], -1, &subr, DT_END_ELLIPSIS | DT_VCENTER | DT_SINGLELINE);
                 }
@@ -388,7 +397,7 @@ LRESULT CALLBACK HeaderHookProc(
 
     dc = GetDC(hwnd);
     pen = CreatePen(PS_SOLID, 1, 0xfbf3e5);
-    prev = SelectObject(dc, pen);
+    prev = (HPEN)SelectObject(dc, (HGDIOBJ)pen);
 
     MoveToEx(dc, 0, rc.bottom, NULL);
     LineTo(dc, rc.right, rc.bottom);
@@ -586,12 +595,13 @@ LRESULT CALLBACK TreeListWindowProc(
                 size += (_strlen(subitems->Text[i]) + 1) * sizeof(TCHAR);
 
             size += sizeof(TL_SUBITEMS) + (subitems->Count * sizeof(LPTSTR));
-            newsubitems = HeapAlloc(hheap, 0, size);
+            newsubitems = (PTL_SUBITEMS)HeapAlloc(hheap, 0, size);
             if (!newsubitems)
                 return 0;
 
             RtlSecureZeroMemory(newsubitems, size);
 
+            newsubitems->UserParam = subitems->UserParam;
             newsubitems->ColorFlags = subitems->ColorFlags;
             newsubitems->BgColor = subitems->BgColor;
             newsubitems->FontColor = subitems->FontColor;
@@ -775,7 +785,7 @@ LRESULT CALLBACK TreeListWindowProc(
             cx = ncm.iCaptionHeight;
         }
         else {
-            font = GetStockObject(DEFAULT_GUI_FONT);
+            font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
             cx = 20;
         }
 

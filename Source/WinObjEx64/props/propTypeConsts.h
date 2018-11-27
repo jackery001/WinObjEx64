@@ -4,9 +4,9 @@
 *
 *  TITLE:       PROPTYPECONSTS.H
 *
-*  VERSION:     1.52
+*  VERSION:     1.61
 *
-*  DATE:        08 Jan 2018
+*  DATE:        25 Nov 2018
 *
 *  Consts header file for Type property sheet.
 *
@@ -35,15 +35,26 @@
 #define	T_InvalidAttributes			L"Invalid Attributes"            
 
 //OBJECT_TYPE->OBJECT_TYPE_INITIALIZER Flags
-static LPCWSTR T_ObjectTypeFlags[8] = {
-    L"CaseInsensitive",			//0
-    L"UnnamedObjectsOnly",		//1
-    L"UseDefaultObject",		//2
-    L"SecurityRequired",		//3
-    L"MaintainHandleCount",		//4
-    L"MaintainTypeList",		//5
+static LPCWSTR T_ObjectTypeFlags[] = {
+    L"CaseInsensitive",         //0
+    L"UnnamedObjectsOnly",      //1
+    L"UseDefaultObject",        //2
+    L"SecurityRequired",        //3
+    L"MaintainHandleCount",     //4
+    L"MaintainTypeList",        //5
     L"SupportsObjectCallbacks", //6
-    L"CacheAligned"				//7
+    L"CacheAligned"             //7
+};
+
+static LPCWSTR T_ObjectTypeFlags2[] = {
+   L"UseExtendedParameters",    //8
+   L"Reserved",
+   L"Reserved",
+   L"Reserved",
+   L"Reserved",
+   L"Reserved",
+   L"Reserved",
+   L"Reserved"
 };
 
 //Known Object Attributes

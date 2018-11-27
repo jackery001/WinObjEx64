@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        19 Nov 2018
 *
 *  IPC supported: Pipes, Mailslots
 *
@@ -108,7 +108,7 @@ LPWSTR IpcCreateObjectPathWithName(
         break;
     }
     if (lpRootDirectory) {
-        lpFullName = supHeapAlloc(sz);
+        lpFullName = (LPWSTR)supHeapAlloc(sz);
         if (lpFullName == NULL) {
             return NULL;
         }
@@ -387,7 +387,7 @@ INT_PTR CALLBACK IpcTypeDialogProc(
 
     case WM_SHOWWINDOW:
         if (wParam) {
-            Context = GetProp(hwndDlg, T_PROPCONTEXT);
+            Context = (PROP_OBJECT_INFO*)GetProp(hwndDlg, T_PROPCONTEXT);
             if (Context) {
                 pDlgContext = (EXTRASCONTEXT*)Context->Tag;
                 if (pDlgContext) {
@@ -408,7 +408,7 @@ INT_PTR CALLBACK IpcTypeDialogProc(
         break;
 
     case WM_PAINT:
-        Context = GetProp(hwndDlg, T_PROPCONTEXT);
+        Context = (PROP_OBJECT_INFO*)GetProp(hwndDlg, T_PROPCONTEXT);
         if (Context) {
             pDlgContext = (EXTRASCONTEXT*)Context->Tag;
             if (pDlgContext) {
@@ -616,7 +616,7 @@ VOID IpcDlgQueryInfo(
             __leave;
 
         QuerySize = 0x1000;
-        DirectoryInfo = supHeapAlloc((SIZE_T)QuerySize);
+        DirectoryInfo = (FILE_DIRECTORY_INFORMATION*)supHeapAlloc((SIZE_T)QuerySize);
         if (DirectoryInfo == NULL)
             __leave;
 
@@ -871,7 +871,7 @@ VOID extrasCreateIpcDialog(
     if (lpObjectsRoot == NULL)
         return;
 
-    lpObjectRelativePath = supHeapAlloc(sz + 100);
+    lpObjectRelativePath = (LPWSTR)supHeapAlloc(sz + 100);
     if (lpObjectRelativePath) {
         _strcpy(lpObjectRelativePath, TEXT("Relative Path ( "));
         _strcat(lpObjectRelativePath, lpObjectsRoot);
@@ -889,18 +889,18 @@ VOID extrasCreateIpcDialog(
         if (pDlgContext->ImageList) {
 
             //set object icon
-            hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(ResourceId), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
+            hIcon = (HICON)LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(ResourceId), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
             if (hIcon) {
                 ImageList_ReplaceIcon(pDlgContext->ImageList, -1, hIcon);
                 DestroyIcon(hIcon);
             }
             //sort images
-            hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTUP), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
+            hIcon = (HICON)LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTUP), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
             if (hIcon) {
                 ImageList_ReplaceIcon(pDlgContext->ImageList, -1, hIcon);
                 DestroyIcon(hIcon);
             }
-            hIcon = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTDOWN), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
+            hIcon = (HICON)LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_SORTDOWN), IMAGE_ICON, 0, 0, LR_DEFAULTCOLOR);
             if (hIcon) {
                 ImageList_ReplaceIcon(pDlgContext->ImageList, -1, hIcon);
                 DestroyIcon(hIcon);

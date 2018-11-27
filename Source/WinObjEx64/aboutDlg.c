@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        07 Nov 2018
+*  DATE:        22 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -50,7 +50,7 @@ VOID AboutDialogInit(
     hImage = LoadImage(g_WinObj.hInstance, MAKEINTRESOURCE(IDI_ICON_MAIN), IMAGE_ICON, 48, 48, LR_SHARED);
     if (hImage) {
         SendMessage(GetDlgItem(hwndDlg, ID_ABOUT_ICON), STM_SETIMAGE, IMAGE_ICON, (LPARAM)hImage);
-        DestroyIcon(hImage);
+        DestroyIcon((HICON)hImage);
     }
 
     //remove class icon if any
@@ -59,10 +59,15 @@ VOID AboutDialogInit(
     RtlSecureZeroMemory(szBuffer, sizeof(szBuffer));
     _strcpy(szBuffer, VC_VER);
     if (szBuffer[0] == 0) {
-        _strcpy(szBuffer, L"MSVC (");
+        _strcpy(szBuffer, TEXT("MSVC ("));
         ultostr(_MSC_FULL_VER, _strend(szBuffer));
-        _strcat(szBuffer, L")");
+        _strcat(szBuffer, TEXT(")"));
     }
+#if defined(__cplusplus)
+    _strcat(szBuffer, TEXT(" compiled as C++"));
+#else
+    _strcat(szBuffer, TEXT(" compiled as C"));
+#endif
 
     SetDlgItemText(hwndDlg, ID_ABOUT_COMPILERINFO, szBuffer);
 
@@ -95,7 +100,7 @@ VOID AboutDialogInit(
     }
 
     // query vhd boot state if possible
-    psvbi = supHeapAlloc(PAGE_SIZE);
+    psvbi = (SYSTEM_VHD_BOOT_INFORMATION*)supHeapAlloc(PAGE_SIZE);
     if (psvbi) {
         status = NtQuerySystemInformation(SystemVhdBootInformation, psvbi, PAGE_SIZE, &returnLength);
         if (NT_SUCCESS(status)) {
@@ -281,14 +286,19 @@ INT_PTR AboutDialogShowGlobals(
         SetActiveWindow(g_hwndGlobals);
     }
 
-    lpGlobalInfo = supVirtualAlloc(PAGE_SIZE);
-    if (lpGlobalInfo) {
-        AboutDialogCollectGlobals(lpGlobalInfo);
-        SetWindowText(g_hwndGlobals, lpGlobalInfo);
-        SendMessage(g_hwndGlobals, EM_SETREADONLY, (WPARAM)1, 0);
-        supVirtualFree(lpGlobalInfo);
+    //
+    // Set text to window.
+    //
+    if (g_hwndGlobals) {
+        lpGlobalInfo = (LPWSTR)supVirtualAlloc(PAGE_SIZE);
+        if (lpGlobalInfo) {
+            AboutDialogCollectGlobals(lpGlobalInfo);
+            SetWindowText(g_hwndGlobals, lpGlobalInfo);
+            SendMessage(g_hwndGlobals, EM_SETREADONLY, (WPARAM)1, 0);
+            supVirtualFree(lpGlobalInfo);
+        }
+        ShowWindow(g_hwndGlobals, SW_SHOWNORMAL);
     }
-    ShowWindow(g_hwndGlobals, SW_SHOWNORMAL);
 
     return 1;
 }
