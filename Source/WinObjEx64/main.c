@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        19 Nov 2018
+*  DATE:        28 Nov 2018
 *
 *  Program entry point and main window handler.
 *

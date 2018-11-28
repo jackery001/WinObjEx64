@@ -4,9 +4,9 @@
 *
 *  TITLE:       NTOS.H
 *
-*  VERSION:     1.96
+*  VERSION:     1.97
 *
-*  DATE:        25 Nov 2018
+*  DATE:        28 Nov 2018
 *
 *  Common header file for the ntos API functions and definitions.
 *
@@ -3217,121 +3217,6 @@ typedef struct _OBJECT_HEADER {
 ** OBJECT MANAGER END
 */
 
-
-/*
-** Callbacks START
-*/
-
-typedef struct _EX_CALLBACK {
-    EX_FAST_REF RoutineBlock;
-} EX_CALLBACK, *PEX_CALLBACK;
-
-typedef struct _EX_CALLBACK_ROUTINE_BLOCK {
-    EX_RUNDOWN_REF RundownProtect;
-    PVOID Function; //PEX_CALLBACK_FUNCTION
-    PVOID Context;
-} EX_CALLBACK_ROUTINE_BLOCK, *PEX_CALLBACK_ROUTINE_BLOCK;
-
-typedef struct _KBUGCHECK_CALLBACK_RECORD {
-    LIST_ENTRY Entry;
-    PVOID CallbackRoutine;
-    PVOID Buffer;
-    ULONG Length;
-    PUCHAR Component;
-    ULONG_PTR Checksum;
-    UCHAR State;
-} KBUGCHECK_CALLBACK_RECORD, *PKBUGCHECK_CALLBACK_RECORD;
-
-typedef enum _KBUGCHECK_CALLBACK_REASON {
-    KbCallbackInvalid,
-    KbCallbackReserved1,
-    KbCallbackSecondaryDumpData,
-    KbCallbackDumpIo,
-    KbCallbackAddPages,
-    KbCallbackSecondaryMultiPartDumpData,
-    KbCallbackRemovePages,
-    KbCallbackTriageDumpData
-} KBUGCHECK_CALLBACK_REASON;
-
-typedef struct _KBUGCHECK_REASON_CALLBACK_RECORD {
-    LIST_ENTRY Entry;
-    PVOID CallbackRoutine;
-    PUCHAR Component;
-    ULONG_PTR Checksum;
-    KBUGCHECK_CALLBACK_REASON Reason;
-    UCHAR State;
-} KBUGCHECK_REASON_CALLBACK_RECORD, *PKBUGCHECK_REASON_CALLBACK_RECORD;
-
-typedef struct _CM_CALLBACK_CONTEXT_BLOCK {
-    LIST_ENTRY CallbackListEntry;
-    LIST_ENTRY PreCallListHead;
-    PVOID Unknown1;
-    PVOID Function; //PEX_CALLBACK_FUNCTION
-    UNICODE_STRING Altitude;
-    LIST_ENTRY ObjectContextListHead;
-} CM_CALLBACK_CONTEXT_BLOCK, *PCM_CALLBACK_CONTEXT_BLOCK;
-
-typedef struct _SEP_LOGON_SESSION_TERMINATED_NOTIFICATION {
-    struct _SEP_LOGON_SESSION_TERMINATED_NOTIFICATION *Next;
-    PVOID CallbackRoutine; //PSE_LOGON_SESSION_TERMINATED_ROUTINE
-} SEP_LOGON_SESSION_TERMINATED_NOTIFICATION, *PSEP_LOGON_SESSION_TERMINATED_NOTIFICATION;
-
-typedef struct _NOTIFICATION_PACKET {
-    LIST_ENTRY ListEntry;
-    PVOID DriverObject; //PDRIVER_OBJECT
-    PVOID NotificationRoutine; //PDRIVER_FS_NOTIFICATION
-} NOTIFICATION_PACKET, *PNOTIFICATION_PACKET;
-
-typedef struct _SHUTDOWN_PACKET {
-    LIST_ENTRY ListEntry;
-    PVOID DeviceObject; //PDEVICE_OBJECT
-} SHUTDOWN_PACKET, *PSHUTDOWN_PACKET;
-
-#define EX_CALLBACK_SIGNATURE 'llaC'
-
-typedef struct _CALLBACK_OBJECT {
-    ULONG Signature;
-    KSPIN_LOCK Lock;
-    LIST_ENTRY RegisteredCallbacks;
-    BOOLEAN AllowMultipleCallbacks;
-    UCHAR reserved[3];
-} CALLBACK_OBJECT, *PCALLBACK_OBJECT;
-
-typedef struct _CALLBACK_REGISTRATION {
-    LIST_ENTRY Link;
-    PCALLBACK_OBJECT CallbackObject;
-    PVOID CallbackFunction; //PCALLBACK_FUNCTION
-    PVOID CallbackContext;
-    ULONG Busy;
-    BOOLEAN UnregisterWaiting;
-} CALLBACK_REGISTRATION, *PCALLBACK_REGISTRATION;
-
-typedef ULONG OB_OPERATION;
-
-typedef struct _OB_CALLBACK_CONTEXT_BLOCK {
-    LIST_ENTRY CallbackListEntry;
-    OB_OPERATION Operations;
-    ULONG Flags;
-    PVOID Registration; //POB_REGISTRATION
-    POBJECT_TYPE ObjectType;
-    PVOID PreCallback; //POB_PRE_OPERATION_CALLBACK
-    PVOID PostCallback; //POB_POST_OPERATION_CALLBACK
-    EX_RUNDOWN_REF RundownReference;
-} OB_CALLBACK_CONTEXT_BLOCK, *POB_CALLBACK_CONTEXT_BLOCK;
-
-typedef struct _OB_REGISTRATION {
-    USHORT Version;
-    USHORT RegistrationCount;
-    PVOID RegistrationContext;
-    UNICODE_STRING Altitude;
-    OB_CALLBACK_CONTEXT_BLOCK CallbackContext[1];
-} OB_REGISTRATION, *POB_REGISTRATION;
-
-/*
-** Callbacks END
-*/
-
-
 /*
 * WDM START
 */
@@ -4155,6 +4040,160 @@ typedef enum _LDR_DLL_LOAD_REASON {
 
 /*
 * WDM END
+*/
+
+
+/*
+** Callbacks START
+*/
+
+typedef struct _EX_CALLBACK {
+    EX_FAST_REF RoutineBlock;
+} EX_CALLBACK, *PEX_CALLBACK;
+
+typedef struct _EX_CALLBACK_ROUTINE_BLOCK {
+    EX_RUNDOWN_REF RundownProtect;
+    PVOID Function; //PEX_CALLBACK_FUNCTION
+    PVOID Context;
+} EX_CALLBACK_ROUTINE_BLOCK, *PEX_CALLBACK_ROUTINE_BLOCK;
+
+typedef struct _KBUGCHECK_CALLBACK_RECORD {
+    LIST_ENTRY Entry;
+    PVOID CallbackRoutine;
+    PVOID Buffer;
+    ULONG Length;
+    PUCHAR Component;
+    ULONG_PTR Checksum;
+    UCHAR State;
+} KBUGCHECK_CALLBACK_RECORD, *PKBUGCHECK_CALLBACK_RECORD;
+
+typedef enum _KBUGCHECK_CALLBACK_REASON {
+    KbCallbackInvalid,
+    KbCallbackReserved1,
+    KbCallbackSecondaryDumpData,
+    KbCallbackDumpIo,
+    KbCallbackAddPages,
+    KbCallbackSecondaryMultiPartDumpData,
+    KbCallbackRemovePages,
+    KbCallbackTriageDumpData
+} KBUGCHECK_CALLBACK_REASON;
+
+typedef struct _KBUGCHECK_REASON_CALLBACK_RECORD {
+    LIST_ENTRY Entry;
+    PVOID CallbackRoutine;
+    PUCHAR Component;
+    ULONG_PTR Checksum;
+    KBUGCHECK_CALLBACK_REASON Reason;
+    UCHAR State;
+} KBUGCHECK_REASON_CALLBACK_RECORD, *PKBUGCHECK_REASON_CALLBACK_RECORD;
+
+typedef struct _CM_CALLBACK_CONTEXT_BLOCK {
+    LIST_ENTRY CallbackListEntry;
+    LIST_ENTRY PreCallListHead;
+    PVOID Unknown1;
+    PVOID Function; //PEX_CALLBACK_FUNCTION
+    UNICODE_STRING Altitude;
+    LIST_ENTRY ObjectContextListHead;
+} CM_CALLBACK_CONTEXT_BLOCK, *PCM_CALLBACK_CONTEXT_BLOCK;
+
+typedef struct _SEP_LOGON_SESSION_TERMINATED_NOTIFICATION {
+    struct _SEP_LOGON_SESSION_TERMINATED_NOTIFICATION *Next;
+    PVOID CallbackRoutine; //PSE_LOGON_SESSION_TERMINATED_ROUTINE
+} SEP_LOGON_SESSION_TERMINATED_NOTIFICATION, *PSEP_LOGON_SESSION_TERMINATED_NOTIFICATION;
+
+typedef struct _NOTIFICATION_PACKET {
+    LIST_ENTRY ListEntry;
+    PVOID DriverObject; //PDRIVER_OBJECT
+    PVOID NotificationRoutine; //PDRIVER_FS_NOTIFICATION
+} NOTIFICATION_PACKET, *PNOTIFICATION_PACKET;
+
+typedef struct _SHUTDOWN_PACKET {
+    LIST_ENTRY ListEntry;
+    PVOID DeviceObject; //PDEVICE_OBJECT
+} SHUTDOWN_PACKET, *PSHUTDOWN_PACKET;
+
+#define EX_CALLBACK_SIGNATURE 'llaC'
+
+typedef struct _CALLBACK_OBJECT {
+    ULONG Signature;
+    KSPIN_LOCK Lock;
+    LIST_ENTRY RegisteredCallbacks;
+    BOOLEAN AllowMultipleCallbacks;
+    UCHAR reserved[3];
+} CALLBACK_OBJECT, *PCALLBACK_OBJECT;
+
+typedef struct _CALLBACK_REGISTRATION {
+    LIST_ENTRY Link;
+    PCALLBACK_OBJECT CallbackObject;
+    PVOID CallbackFunction; //PCALLBACK_FUNCTION
+    PVOID CallbackContext;
+    ULONG Busy;
+    BOOLEAN UnregisterWaiting;
+} CALLBACK_REGISTRATION, *PCALLBACK_REGISTRATION;
+
+typedef ULONG OB_OPERATION;
+
+typedef struct _OB_CALLBACK_CONTEXT_BLOCK {
+    LIST_ENTRY CallbackListEntry;
+    OB_OPERATION Operations;
+    ULONG Flags;
+    PVOID Registration; //POB_REGISTRATION
+    POBJECT_TYPE ObjectType;
+    PVOID PreCallback; //POB_PRE_OPERATION_CALLBACK
+    PVOID PostCallback; //POB_POST_OPERATION_CALLBACK
+    EX_RUNDOWN_REF RundownReference;
+} OB_CALLBACK_CONTEXT_BLOCK, *POB_CALLBACK_CONTEXT_BLOCK;
+
+typedef struct _OB_REGISTRATION {
+    USHORT Version;
+    USHORT RegistrationCount;
+    PVOID RegistrationContext;
+    UNICODE_STRING Altitude;
+    OB_CALLBACK_CONTEXT_BLOCK CallbackContext[1];
+} OB_REGISTRATION, *POB_REGISTRATION;
+
+#define PO_POWER_SETTINGS_REGISTRATION_TAG 'teSP'
+
+typedef struct _POP_POWER_SETTING_REGISTRATION_V1 {
+    LIST_ENTRY Link;
+    ULONG Tag;
+    PVOID CallbackThread; //PKTHREAD
+    UCHAR UnregisterOnReturn;
+    UCHAR UnregisterPending;
+    GUID Guid;
+    PVOID LastValue; //PPOP_POWER_SETTING_VALUE
+    PVOID Callback;
+    PVOID Context;
+    PDEVICE_OBJECT DeviceObject;
+} POP_POWER_SETTING_REGISTRATION_V1, *PPOP_POWER_SETTING_REGISTRATION_V1;
+
+//
+// WARNING: this structure definition is incomplete. 
+// Tail is incorrect/incomplete for newest Win10 versions.
+//
+typedef struct _POP_POWER_SETTING_REGISTRATION_V2 {
+    LIST_ENTRY Link;
+    ULONG Tag;
+    PVOID CallbackThread; //PKTHREAD   
+    UCHAR UnregisterOnReturn;
+    UCHAR UnregisterPending;
+    GUID Guid;
+    GUID Guid2;
+    PVOID LastValue; //PPOP_POWER_SETTING_VALUE
+    PVOID Callback;
+    PVOID Context;
+    PDEVICE_OBJECT DeviceObject;
+} POP_POWER_SETTING_REGISTRATION_V2, *PPOP_POWER_SETTING_REGISTRATION_V2;
+
+typedef struct _RTL_CALLBACK_REGISTER {
+    ULONG Flags;
+    EX_RUNDOWN_REF RundownReference;
+    PVOID DebugPrintCallback;
+    LIST_ENTRY ListEntry;
+} RTL_CALLBACK_REGISTER, *PRTL_CALLBACK_REGISTER;
+
+/*
+** Callbacks END
 */
 
 /*

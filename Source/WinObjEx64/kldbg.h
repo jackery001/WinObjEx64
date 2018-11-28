@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        26 Nov 2018
+*  DATE:        28 Nov 2018
 *
 *  Common header file for the Kernel Debugger Driver support.
 *
@@ -158,6 +158,10 @@ typedef struct _NOTIFICATION_CALLBACKS {
     ULONG_PTR ObProcessCallbackHead;
     ULONG_PTR ObThreadCallbackHead;
     ULONG_PTR ObDesktopCallbackHead;
+    ULONG_PTR SeFileSystemNotifyRoutinesHead;
+    ULONG_PTR SeFileSystemNotifyRoutinesExHead;
+    ULONG_PTR PopRegisteredPowerSettingCallbacks;
+    ULONG_PTR RtlpDebugPrintCallbackList;
 } NOTIFICATION_CALLBACKS, *PNOTIFICATION_CALLBACKS;
 
 extern NOTIFICATION_CALLBACKS g_NotifyCallbacks;
