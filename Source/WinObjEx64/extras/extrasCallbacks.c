@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        28 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -17,7 +17,230 @@
 #include "global.h"
 #include "extras.h"
 #include "extrasCallbacks.h"
+#include "treelist\treelist.h"
 #include "hde/hde64.h"
+
+ATOM g_CbTreeListAtom;
+
+/*
+* FindIopFileSystemQueueHeads
+*
+* Purpose:
+*
+* Return addresses of list heads for callbacks registered with:
+*
+*   IoRegisterFileSystem
+*
+*/
+_Success_(return == TRUE)
+BOOL FindIopFileSystemQueueHeads(
+    _Out_ ULONG_PTR *IopCdRomFileSystemQueueHead,
+    _Out_ ULONG_PTR *IopDiskFileSystemQueueHead,
+    _Out_ ULONG_PTR *IopTapeFileSystemQueueHead,
+    _Out_ ULONG_PTR *IopNetworkFileSystemQueueHead
+)
+{
+    ULONG Index, Count;
+    LONG Rel = 0;
+    ULONG_PTR Address = 0;
+    PBYTE ptrCode;
+    hde64s hs;
+
+    ULONG_PTR NtOsBase = (ULONG_PTR)g_kdctx.NtOsBase;
+    HMODULE hNtOs = (HINSTANCE)g_kdctx.NtOsImageMap;
+
+    ptrCode = (PBYTE)GetProcAddress(hNtOs, "IoRegisterFileSystem");
+
+    if (ptrCode == NULL)
+        return 0;
+
+    Index = 0;
+    Rel = 0;
+    Count = 0;
+
+    if (g_NtBuildNumber < 9200) {
+
+        do {
+            hde64_disasm(ptrCode + Index, &hs);
+            if (hs.flags & F_ERROR)
+                break;
+
+            if (hs.len == 7) {
+                //
+                // lea  rdx, xxx                
+                //
+                if ((ptrCode[Index] == 0x48) &&
+                    (ptrCode[Index + 1] == 0x8D) &&
+                    (ptrCode[Index + 2] == 0x15))
+                {
+                    Rel = *(PLONG)(ptrCode + Index + 3);
+                    if (Rel) {
+                        Address = (ULONG_PTR)ptrCode + Index + hs.len + Rel;
+                        Address = NtOsBase + Address - (ULONG_PTR)hNtOs;
+                        if (kdAddressInNtOsImage((PVOID)Address)) {
+
+                            switch (Count) {
+                            case 0:
+                                *IopNetworkFileSystemQueueHead = Address;
+                                break;
+
+                            case 1:
+                                *IopCdRomFileSystemQueueHead = Address;
+                                break;
+
+                            case 2:
+                                *IopDiskFileSystemQueueHead = Address;
+                                break;
+
+                            case 3:
+                                *IopTapeFileSystemQueueHead = Address;
+                                break;
+
+                            default:
+                                break;
+                            }
+                            Count += 1;
+                            if (Count == 4)
+                                break;
+                        }
+                    }
+                }
+
+            }
+
+            Index += hs.len;
+
+        } while (Index < 512);
+
+    }
+    else {
+
+        do {
+            hde64_disasm(ptrCode + Index, &hs);
+            if (hs.flags & F_ERROR)
+                break;
+
+            if (hs.len == 7) {
+                //
+                // lea  rdx, xxx                
+                //
+                if ((ptrCode[Index] == 0x48) &&
+                    (ptrCode[Index + 1] == 0x8D) &&
+                    (ptrCode[Index + 2] == 0x0D) &&
+                    ((ptrCode[Index + hs.len] == 0x48) || (ptrCode[Index + hs.len] == 0xE9)))
+                {
+                    Rel = *(PLONG)(ptrCode + Index + 3);
+                    if (Rel) {
+                        Address = (ULONG_PTR)ptrCode + Index + hs.len + Rel;
+                        Address = NtOsBase + Address - (ULONG_PTR)hNtOs;
+                        if (kdAddressInNtOsImage((PVOID)Address)) {
+
+                            switch (Count) {
+
+                            case 0:
+                                *IopDiskFileSystemQueueHead = Address;
+                                break;
+
+                            case 1:
+                                *IopCdRomFileSystemQueueHead = Address;
+                                break;
+
+                            case 2:
+                                *IopNetworkFileSystemQueueHead = Address;
+                                break;
+
+                            case 3:
+                                *IopTapeFileSystemQueueHead = Address;
+                                break;
+
+                            default:
+                                break;
+                            }
+                            Count += 1;
+                            if (Count == 4)
+                                break;
+                        }
+                    }
+                }
+
+            }
+
+            Index += hs.len;
+
+        } while (Index < 512);
+
+    }
+
+    return (Count == 4);
+}
+
+/*
+* FindIopFsNotifyChangeQueueHead
+*
+* Purpose:
+*
+* Return address of list head for callbacks registered with:
+*
+*   IoRegisterFsRegistrationChange
+*
+*/
+ULONG_PTR FindIopFsNotifyChangeQueueHead(
+    VOID
+)
+{
+    ULONG Index;
+    LONG Rel = 0;
+    ULONG_PTR Address = 0;
+    PBYTE ptrCode;
+    hde64s hs;
+
+    ULONG_PTR NtOsBase = (ULONG_PTR)g_kdctx.NtOsBase;
+    HMODULE hNtOs = (HINSTANCE)g_kdctx.NtOsImageMap;
+
+    ptrCode = (PBYTE)GetProcAddress(hNtOs, "IoUnregisterFsRegistrationChange");
+
+    if (ptrCode == NULL)
+        return 0;
+
+    Index = 0;
+    Rel = 0;
+
+    do {
+        hde64_disasm(ptrCode + Index, &hs);
+        if (hs.flags & F_ERROR)
+            break;
+
+        if (hs.len == 7) {
+            //
+            // lea  rax, IopFsNotifyChangeQueueHead
+            // jmp  short
+            //
+            if ((ptrCode[Index] == 0x48) &&
+                (ptrCode[Index + 1] == 0x8D) &&
+                (ptrCode[Index + 2] == 0x05) &&
+                (ptrCode[Index + 7] == 0xEB))
+            {
+                Rel = *(PLONG)(ptrCode + Index + 3);
+                break;
+            }
+
+        }
+
+        Index += hs.len;
+
+    } while (Index < 256);
+
+    if (Rel == 0)
+        return 0;
+
+    Address = (ULONG_PTR)ptrCode + Index + hs.len + Rel;
+    Address = NtOsBase + Address - (ULONG_PTR)hNtOs;
+
+    if (!kdAddressInNtOsImage((PVOID)Address))
+        return 0;
+
+    return Address;
+}
 
 /*
 * FindRtlpDebugPrintCallbackList
@@ -30,7 +253,8 @@
 *
 */
 ULONG_PTR FindRtlpDebugPrintCallbackList(
-    VOID)
+    VOID
+)
 {
     ULONG Index;
     LONG Rel = 0;
@@ -333,7 +557,7 @@ ULONG_PTR GetObjectTypeCallbackListHeadByType(
     ObjectType.Ref = ObjectTypeInformation;
 
     //
-    // Flags in compat fields.
+    // Flags in structure offset compatible fields.
     //
     if (ObjectType.Versions.ObjectType_7->TypeInfo.SupportsObjectCallbacks) {
 
@@ -860,52 +1084,62 @@ ULONG_PTR FindPspCreateProcessNotifyRoutine(
 }
 
 /*
+* AddRootEntryToList
+*
+* Purpose:
+*
+* Adds callback root entry to the treelist.
+*
+*/
+HTREEITEM AddRootEntryToList(
+    _In_ HWND TreeList,
+    _In_ LPWSTR lpCallbackType
+)
+{
+    return TreeListAddItem(
+        TreeList,
+        NULL,
+        TVIF_TEXT | TVIF_STATE,
+        (UINT)0,
+        (UINT)0,
+        lpCallbackType,
+        NULL);
+}
+
+/*
 * AddEntryToList
 *
 * Purpose:
 *
-* Adds callback entry to the listview.
+* Adds callback entry to the treelist.
 *
 */
 VOID AddEntryToList(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
+    _In_ HTREEITEM RootItem,
     _In_ ULONG_PTR Function,
-    _In_ LPWSTR lpCallbackType,
     _In_opt_ LPWSTR lpAdditionalInfo,
     _In_ PRTL_PROCESS_MODULES Modules
 )
 {
-    INT index, number;
-    LVITEM lvitem;
+    INT ModuleIndex;
+    TL_SUBITEMS_FIXED TreeListSubItems;
+    WCHAR szAddress[32];
     WCHAR szBuffer[MAX_PATH + 1];
 
-    RtlSecureZeroMemory(&lvitem, sizeof(lvitem));
-    lvitem.mask = LVIF_TEXT | LVIF_IMAGE;
-    lvitem.iSubItem = 0;
-    lvitem.iImage = ObjectTypeCallback;
-    lvitem.iItem = MAXINT;
+    RtlSecureZeroMemory(&TreeListSubItems, sizeof(TreeListSubItems));
+    TreeListSubItems.Count = 2;
 
-    szBuffer[0] = L'0';
-    szBuffer[1] = L'x';
-    szBuffer[2] = 0;
-    u64tohex(Function, &szBuffer[2]);
-    lvitem.pszText = szBuffer;
+    szAddress[0] = L'0';
+    szAddress[1] = L'x';
+    szAddress[2] = 0;
+    u64tohex(Function, &szAddress[2]);
+    TreeListSubItems.Text[0] = szAddress;
 
-    index = ListView_InsertItem(ListView, &lvitem);
-
-    //Type
-    lvitem.mask = LVIF_TEXT;
-    lvitem.iSubItem = 1;
-    lvitem.pszText = lpCallbackType;
-    lvitem.iItem = index;
-    ListView_SetItem(ListView, &lvitem);
-
-    //Module
-    lvitem.iSubItem = 2;
     RtlSecureZeroMemory(szBuffer, sizeof(szBuffer));
 
-    number = supFindModuleEntryByAddress(Modules, (PVOID)Function);
-    if (number == (ULONG)-1) {
+    ModuleIndex = supFindModuleEntryByAddress(Modules, (PVOID)Function);
+    if (ModuleIndex == (ULONG)-1) {
         _strcpy(szBuffer, TEXT("Unknown Module"));
     }
     else {
@@ -913,22 +1147,23 @@ VOID AddEntryToList(
         MultiByteToWideChar(
             CP_ACP,
             0,
-            (LPCSTR)&Modules->Modules[number].FullPathName,
-            (INT)_strlen_a((char*)Modules->Modules[number].FullPathName),
+            (LPCSTR)&Modules->Modules[ModuleIndex].FullPathName,
+            (INT)_strlen_a((char*)Modules->Modules[ModuleIndex].FullPathName),
             szBuffer,
             MAX_PATH);
     }
 
-    lvitem.pszText = szBuffer;
-    lvitem.iItem = index;
-    ListView_SetItem(ListView, &lvitem);
+    TreeListSubItems.Text[0] = szBuffer;
+    TreeListSubItems.Text[1] = lpAdditionalInfo;
 
-    //Additional Info
-    lvitem.mask = LVIF_TEXT;
-    lvitem.iSubItem = 3;
-    lvitem.pszText = lpAdditionalInfo;
-    lvitem.iItem = index;
-    ListView_SetItem(ListView, &lvitem);
+    TreeListAddItem(
+        TreeList,
+        RootItem,
+        TVIF_TEXT | TVIF_STATE,
+        (UINT)0,
+        (UINT)0,
+        szAddress,
+        &TreeListSubItems);
 }
 
 /*
@@ -940,24 +1175,30 @@ VOID AddEntryToList(
 *
 */
 VOID DumpPsCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR RoutinesArrayAddress
+    _In_ ULONG_PTR RoutinesArrayAddress,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     ULONG c;
     ULONG_PTR Address, Function;
     EX_FAST_REF Callbacks[PspNotifyRoutinesLimit];
-    PRTL_PROCESS_MODULES Modules;
 
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
         return;
 
     RtlSecureZeroMemory(Callbacks, sizeof(Callbacks));
     if (kdReadSystemMemory(RoutinesArrayAddress,
         &Callbacks, sizeof(Callbacks)))
     {
+
         for (c = 0; c < PspNotifyRoutinesLimit; c++) {
 
             if (Callbacks[c].Value) {
@@ -967,16 +1208,15 @@ VOID DumpPsCallbacks(
                 if (Function < g_kdctx.SystemRangeStart)
                     continue;
 
-                AddEntryToList(ListView,
+                AddEntryToList(TreeList,
+                    RootItem,
                     Function,
-                    lpCallbackType,
                     NULL,
                     Modules);
             }
         }
     }
 
-    supHeapFree(Modules);
 }
 
 /*
@@ -988,16 +1228,24 @@ VOID DumpPsCallbacks(
 *
 */
 VOID DumpKeBugCheckCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     LIST_ENTRY ListEntry;
 
-    PRTL_PROCESS_MODULES Modules;
-
     KBUGCHECK_CALLBACK_RECORD CallbackRecord;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1012,10 +1260,6 @@ VOID DumpKeBugCheckCallbacks(
     {
         return;
     }
-
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
 
     //
     // Walk list entries.
@@ -1032,18 +1276,25 @@ VOID DumpKeBugCheckCallbacks(
             break;
         }
 
-        AddEntryToList(ListView,
+        AddEntryToList(TreeList,
+            RootItem,
             (ULONG_PTR)CallbackRecord.CallbackRoutine,
-            lpCallbackType,
             NULL,
             Modules);
 
         ListEntry.Flink = CallbackRecord.Entry.Flink;
     }
 
-    supHeapFree(Modules);
 }
 
+/*
+* KeBugCheckReasonToString
+*
+* Purpose:
+*
+* Return Reason as text constant.
+*
+*/
 LPWSTR KeBugCheckReasonToString(
     _In_ KBUGCHECK_CALLBACK_REASON Reason)
 {
@@ -1084,16 +1335,24 @@ LPWSTR KeBugCheckReasonToString(
 *
 */
 VOID DumpKeBugCheckReasonCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     LIST_ENTRY ListEntry;
 
-    PRTL_PROCESS_MODULES Modules;
-
     KBUGCHECK_REASON_CALLBACK_RECORD CallbackRecord;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1108,10 +1367,6 @@ VOID DumpKeBugCheckReasonCallbacks(
     {
         return;
     }
-
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
 
     //
     // Walk list entries.
@@ -1128,16 +1383,15 @@ VOID DumpKeBugCheckReasonCallbacks(
             break;
         }
 
-        AddEntryToList(ListView,
+        AddEntryToList(TreeList,
+            RootItem,
             (ULONG_PTR)CallbackRecord.CallbackRoutine,
-            lpCallbackType,
             KeBugCheckReasonToString(CallbackRecord.Reason),
             Modules);
 
         ListEntry.Flink = CallbackRecord.Entry.Flink;
     }
 
-    supHeapFree(Modules);
 }
 
 /*
@@ -1149,16 +1403,24 @@ VOID DumpKeBugCheckReasonCallbacks(
 *
 */
 VOID DumpCmCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     LIST_ENTRY ListEntry;
 
-    PRTL_PROCESS_MODULES Modules;
-
     CM_CALLBACK_CONTEXT_BLOCK CallbackRecord;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1173,10 +1435,6 @@ VOID DumpCmCallbacks(
     {
         return;
     }
-
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
 
     //
     // Walk list entries.
@@ -1193,16 +1451,15 @@ VOID DumpCmCallbacks(
             break;
         }
 
-        AddEntryToList(ListView,
+        AddEntryToList(TreeList,
+            RootItem,
             (ULONG_PTR)CallbackRecord.Function,
-            lpCallbackType,
             NULL,
             Modules);
 
         ListEntry.Flink = CallbackRecord.CallbackListEntry.Flink;
     }
 
-    supHeapFree(Modules);
 }
 
 /*
@@ -1214,14 +1471,13 @@ VOID DumpCmCallbacks(
 *
 */
 VOID DumpIoCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     LIST_ENTRY ListEntry;
-
-    PRTL_PROCESS_MODULES Modules;
 
     SHUTDOWN_PACKET EntryPacket;
 
@@ -1232,6 +1488,14 @@ VOID DumpIoCallbacks(
     PVOID Routine;
     LPWSTR lpDescription;
 
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1246,10 +1510,6 @@ VOID DumpIoCallbacks(
     {
         return;
     }
-
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
 
     //
     // Walk list entries.
@@ -1300,16 +1560,15 @@ VOID DumpIoCallbacks(
 
         }
 
-        AddEntryToList(ListView,
+        AddEntryToList(TreeList,
+            RootItem,
             (ULONG_PTR)Routine,
-            lpCallbackType,
             lpDescription,
             Modules);
 
         ListEntry.Flink = EntryPacket.ListEntry.Flink;
     }
 
-    supHeapFree(Modules);
 }
 
 /*
@@ -1321,9 +1580,10 @@ VOID DumpIoCallbacks(
 *
 */
 VOID DumpObCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     BOOL bAltitudeRead, bNeedFree;
@@ -1334,12 +1594,18 @@ VOID DumpObCallbacks(
 
     LIST_ENTRY ListEntry;
 
-    PRTL_PROCESS_MODULES Modules;
-
     OB_CALLBACK_CONTEXT_BLOCK CallbackRecord;
 
     OB_REGISTRATION Registration;
 
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1354,10 +1620,6 @@ VOID DumpObCallbacks(
     {
         return;
     }
-
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
 
     //
     // Walk list entries.
@@ -1415,9 +1677,9 @@ VOID DumpObCallbacks(
             else
                 lpType = TEXT("PreCallback");
 
-            AddEntryToList(ListView,
+            AddEntryToList(TreeList,
+                RootItem,
                 (ULONG_PTR)CallbackRecord.PreCallback,
-                lpCallbackType,
                 lpType,
                 Modules);
 
@@ -1443,9 +1705,9 @@ VOID DumpObCallbacks(
             else
                 lpType = TEXT("PostCallback");
 
-            AddEntryToList(ListView,
+            AddEntryToList(TreeList,
+                RootItem,
                 (ULONG_PTR)CallbackRecord.PostCallback,
-                lpCallbackType,
                 lpType,
                 Modules);
 
@@ -1456,7 +1718,6 @@ VOID DumpObCallbacks(
         if (lpInfoBuffer) supHeapFree(lpInfoBuffer);
     }
 
-    supHeapFree(Modules);
 }
 
 /*
@@ -1468,16 +1729,25 @@ VOID DumpObCallbacks(
 *
 */
 VOID DumpSeCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR EntryHead
+    _In_ ULONG_PTR EntryHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     ULONG_PTR Next;
 
     SEP_LOGON_SESSION_TERMINATED_NOTIFICATION SeEntry; // This structure is different for Ex variant but 
                                                        // key callback function field is on the same offset.
-    PRTL_PROCESS_MODULES Modules;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     //
     // Read head.
@@ -1492,10 +1762,6 @@ VOID DumpSeCallbacks(
         return;
     }
 
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
-
     //
     // Walk each entry in single linked list.
     //
@@ -1504,22 +1770,24 @@ VOID DumpSeCallbacks(
 
         RtlSecureZeroMemory(&SeEntry, sizeof(SeEntry));
 
-        if (kdReadSystemMemoryEx(Next,
+        if (!kdReadSystemMemoryEx(Next,
             (PVOID)&SeEntry,
             sizeof(SeEntry),
             NULL))
         {
-            AddEntryToList(ListView,
-                (ULONG_PTR)SeEntry.CallbackRoutine,
-                lpCallbackType,
-                NULL,
-                Modules);
-
-            Next = (ULONG_PTR)SeEntry.Next;
+            break;
         }
 
+        AddEntryToList(TreeList,
+            RootItem,
+            (ULONG_PTR)SeEntry.CallbackRoutine,
+            NULL,
+            Modules);
+
+        Next = (ULONG_PTR)SeEntry.Next;
+
     }
-    supHeapFree(Modules);
+
 }
 
 /*
@@ -1531,14 +1799,13 @@ VOID DumpSeCallbacks(
 *
 */
 VOID DumpPoCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     LIST_ENTRY ListEntry;
-
-    PRTL_PROCESS_MODULES Modules = NULL;
 
     union {
         union {
@@ -1556,6 +1823,15 @@ VOID DumpPoCallbacks(
 
     GUID EntryGuid;
     UNICODE_STRING ConvertedGuid;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1591,10 +1867,6 @@ VOID DumpPoCallbacks(
             __leave;
         }
 
-        Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-        if (Modules == NULL)
-            __leave;
-
         //
         // Walk list entries.
         //
@@ -1620,7 +1892,7 @@ VOID DumpPoCallbacks(
                 CallbackRoutine = CallbackData.Versions.v2->Callback;
                 EntryGuid = CallbackData.Versions.v2->Guid;
             }
-            else if (ReadSize == sizeof(POP_POWER_SETTING_REGISTRATION_V1)) {
+            else {
                 CallbackRoutine = CallbackData.Versions.v1->Callback;
                 EntryGuid = CallbackData.Versions.v1->Guid;
             }
@@ -1632,9 +1904,9 @@ VOID DumpPoCallbacks(
                 else
                     GuidString = NULL;
 
-                AddEntryToList(ListView,
+                AddEntryToList(TreeList,
+                    RootItem,
                     (ULONG_PTR)CallbackRoutine,
-                    lpCallbackType,
                     GuidString,
                     Modules);
 
@@ -1652,7 +1924,6 @@ VOID DumpPoCallbacks(
     }
     __finally {
         if (Buffer) supHeapFree(Buffer);
-        if (Modules) supHeapFree(Modules);
     }
 }
 
@@ -1665,18 +1936,26 @@ VOID DumpPoCallbacks(
 *
 */
 VOID DumpDbgPrintCallbacks(
-    _In_ HWND ListView,
+    _In_ HWND TreeList,
     _In_ LPWSTR lpCallbackType,
-    _In_ ULONG_PTR ListHead
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
 )
 {
     ULONG_PTR RecordAddress;
 
     LIST_ENTRY ListEntry;
 
-    PRTL_PROCESS_MODULES Modules;
-
     RTL_CALLBACK_REGISTER CallbackRecord;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
 
     ListEntry.Flink = ListEntry.Blink = NULL;
 
@@ -1691,10 +1970,6 @@ VOID DumpDbgPrintCallbacks(
     {
         return;
     }
-
-    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
-    if (Modules == NULL)
-        return;
 
     //
     // Walk list entries.
@@ -1716,9 +1991,9 @@ VOID DumpDbgPrintCallbacks(
 
         if (CallbackRecord.DebugPrintCallback) {
 
-            AddEntryToList(ListView,
+            AddEntryToList(TreeList,
+                RootItem,
                 (ULONG_PTR)CallbackRecord.DebugPrintCallback,
-                lpCallbackType,
                 NULL,
                 Modules);
 
@@ -1726,7 +2001,228 @@ VOID DumpDbgPrintCallbacks(
         ListEntry.Flink = CallbackRecord.ListEntry.Flink;
     }
 
-    supHeapFree(Modules);
+}
+
+/*
+* DumpIoFsRegistrationCallbacks
+*
+* Purpose:
+*
+* Read Io File System registration related callback data from kernel and send it to output window.
+*
+*/
+VOID DumpIoFsRegistrationCallbacks(
+    _In_ HWND TreeList,
+    _In_ LPWSTR lpCallbackType,
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
+)
+{
+    LIST_ENTRY ListEntry;
+
+    NOTIFICATION_PACKET CallbackRecord;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
+
+    ListEntry.Flink = ListEntry.Blink = NULL;
+
+    //
+    // Read head.
+    //
+    if (!kdReadSystemMemoryEx(
+        ListHead,
+        &ListEntry,
+        sizeof(LIST_ENTRY),
+        NULL))
+    {
+        return;
+    }
+
+    //
+    // Walk list entries.
+    //
+    while ((ULONG_PTR)ListEntry.Flink != ListHead) {
+
+        RtlSecureZeroMemory(&CallbackRecord, sizeof(CallbackRecord));
+
+        if (!kdReadSystemMemoryEx((ULONG_PTR)ListEntry.Flink,
+            &CallbackRecord,
+            sizeof(CallbackRecord),
+            NULL))
+        {
+            break;
+        }
+
+        if (CallbackRecord.NotificationRoutine) {
+
+            AddEntryToList(TreeList,
+                RootItem,
+                (ULONG_PTR)CallbackRecord.NotificationRoutine,
+                NULL,
+                Modules);
+
+        }
+
+        ListEntry.Flink = CallbackRecord.ListEntry.Flink;
+    }
+
+}
+
+/*
+* DumpIoFileSystemCallbacks
+*
+* Purpose:
+*
+* Read Io File System related callback data from kernel and send it to output window.
+*
+*/
+VOID DumpIoFileSystemCallbacks(
+    _In_ HWND TreeList,
+    _In_ LPWSTR lpCallbackType,
+    _In_ ULONG_PTR ListHead,
+    _In_ PRTL_PROCESS_MODULES Modules
+)
+{
+    BOOL bNeedFree;
+
+    LIST_ENTRY ListEntry, NextEntry;
+
+    ULONG_PTR DeviceObjectAddress = 0, BaseAddress = 0;
+
+    DEVICE_OBJECT DeviceObject;
+
+    DRIVER_OBJECT DriverObject;
+
+    LPWSTR lpType;
+
+    HTREEITEM RootItem;
+
+    //
+    // Add callback root entry to the treelist.
+    //
+    RootItem = AddRootEntryToList(TreeList, lpCallbackType);
+    if (RootItem == 0)
+        return;
+
+    ListEntry.Flink = ListEntry.Blink = NULL;
+
+    //
+    // Read head.
+    //
+    if (!kdReadSystemMemoryEx(
+        ListHead,
+        &ListEntry,
+        sizeof(LIST_ENTRY),
+        NULL))
+    {
+        return;
+    }
+
+    //
+    // Walk list entries.
+    //
+    while ((ULONG_PTR)ListEntry.Flink != ListHead) {
+
+        RtlSecureZeroMemory(&DeviceObject, sizeof(DeviceObject));
+
+        DeviceObjectAddress = (ULONG_PTR)ListEntry.Flink - FIELD_OFFSET(DEVICE_OBJECT, Queue);
+
+        //
+        // Read DEVICE_OBJECT.
+        //
+        if (!kdReadSystemMemoryEx(DeviceObjectAddress,
+            &DeviceObject,
+            sizeof(DeviceObject),
+            NULL))
+        {
+            break;
+        }
+
+        //
+        // Additional info column default text.
+        //
+        lpType = TEXT("PDEVICE_OBJECT");
+        BaseAddress = DeviceObjectAddress;
+        bNeedFree = FALSE;
+
+        //
+        // Read DRIVER_OBJECT.
+        //
+        RtlSecureZeroMemory(&DriverObject, sizeof(DriverObject));
+        if (kdReadSystemMemoryEx((ULONG_PTR)DeviceObject.DriverObject,
+            &DriverObject,
+            sizeof(DriverObject),
+            NULL))
+        {
+            //
+            // Determinate address to display.
+            //
+            BaseAddress = (ULONG_PTR)DriverObject.DriverInit;
+            if (BaseAddress == 0) {
+                BaseAddress = (ULONG_PTR)DriverObject.DriverStart;
+            }
+
+            lpType = NULL;
+
+            //
+            // Read DRIVER_OBJECT name.
+            //
+            if (DriverObject.DriverName.Length &&
+                DriverObject.DriverName.MaximumLength &&
+                DriverObject.DriverName.Buffer)
+            {
+                lpType = (LPWSTR)supHeapAlloc((SIZE_T)DriverObject.DriverName.Length + sizeof(UNICODE_NULL));
+                if (lpType) {
+                    bNeedFree = TRUE;
+                    if (!kdReadSystemMemoryEx((ULONG_PTR)DriverObject.DriverName.Buffer,
+                        lpType,
+                        (ULONG)DriverObject.DriverName.Length,
+                        NULL))
+                    {
+                        supHeapFree(lpType);
+                        lpType = NULL;
+                        bNeedFree = FALSE;
+                    }
+                }
+            }
+        }
+
+        AddEntryToList(TreeList,
+            RootItem,
+            BaseAddress,
+            lpType, //PDEVICE_OBJECT or DRIVER_OBJECT.DriverName
+            Modules);
+
+        if (bNeedFree)
+            supHeapFree(lpType);
+
+        //
+        // Next ListEntry.
+        //
+        NextEntry.Blink = NextEntry.Flink = NULL;
+
+        if (!kdReadSystemMemoryEx(
+            (ULONG_PTR)ListEntry.Flink,
+            &NextEntry,
+            sizeof(LIST_ENTRY),
+            NULL))
+        {
+            break;
+        }
+
+        if (NextEntry.Flink == NULL)
+            break;
+
+        ListEntry.Flink = NextEntry.Flink;
+    }
+
 }
 
 /*
@@ -1739,291 +2235,389 @@ VOID DumpDbgPrintCallbacks(
 */
 VOID CallbacksList(
     _In_ HWND hwndDlg,
-    _In_ HWND ListView)
+    _In_ HWND TreeList)
 {
+    PRTL_PROCESS_MODULES Modules;
+
+    __try {
+        //
+        // Query all addresses.
+        //
+        if (g_NotifyCallbacks.PspCreateProcessNotifyRoutine == 0)
+            g_NotifyCallbacks.PspCreateProcessNotifyRoutine = FindPspCreateProcessNotifyRoutine();
+
+        if (g_NotifyCallbacks.PspCreateThreadNotifyRoutine == 0)
+            g_NotifyCallbacks.PspCreateThreadNotifyRoutine = FindPspCreateThreadNotifyRoutine();
+
+        if (g_NotifyCallbacks.PspLoadImageNotifyRoutine == 0)
+            g_NotifyCallbacks.PspLoadImageNotifyRoutine = FindPspLoadImageNotifyRoutine();
+
+        if (g_NotifyCallbacks.KeBugCheckCallbackHead == 0)
+            g_NotifyCallbacks.KeBugCheckCallbackHead = FindKeBugCheckCallbackHead();
+
+        if (g_NotifyCallbacks.KeBugCheckReasonCallbackHead == 0)
+            g_NotifyCallbacks.KeBugCheckReasonCallbackHead = FindKeBugCheckReasonCallbackHead();
+
+        if (g_NotifyCallbacks.IopNotifyShutdownQueueHead == 0)
+            g_NotifyCallbacks.IopNotifyShutdownQueueHead = FindIopNotifyShutdownQueueHeadHead(FALSE);
+
+        if (g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead == 0)
+            g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead = FindIopNotifyShutdownQueueHeadHead(TRUE);
+
+        if (g_NotifyCallbacks.CmCallbackListHead == 0)
+            g_NotifyCallbacks.CmCallbackListHead = FindCmCallbackHead();
+
+        if (g_NotifyCallbacks.ObProcessCallbackHead == 0)
+            g_NotifyCallbacks.ObProcessCallbackHead = GetObjectTypeCallbackListHeadByType(0);
+
+        if (g_NotifyCallbacks.ObThreadCallbackHead == 0)
+            g_NotifyCallbacks.ObThreadCallbackHead = GetObjectTypeCallbackListHeadByType(1);
+
+        if (g_NotifyCallbacks.ObDesktopCallbackHead == 0)
+            g_NotifyCallbacks.ObDesktopCallbackHead = GetObjectTypeCallbackListHeadByType(2);
+
+        if (g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead == 0)
+            g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead = FindSeFileSystemNotifyRoutinesHead(FALSE);
+
+        if (g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead == 0)
+            g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead = FindSeFileSystemNotifyRoutinesHead(TRUE);
+
+        if (g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks == 0)
+            g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks = FindPopRegisteredPowerSettingCallbacks();
+
+        if (g_NotifyCallbacks.RtlpDebugPrintCallbackList == 0)
+            g_NotifyCallbacks.RtlpDebugPrintCallbackList = FindRtlpDebugPrintCallbackList();
+
+        if (g_NotifyCallbacks.IopFsNotifyChangeQueueHead == 0)
+            g_NotifyCallbacks.IopFsNotifyChangeQueueHead = FindIopFsNotifyChangeQueueHead();
+
+        if ((g_NotifyCallbacks.IopCdRomFileSystemQueueHead == 0) ||
+            (g_NotifyCallbacks.IopDiskFileSystemQueueHead == 0) ||
+            (g_NotifyCallbacks.IopTapeFileSystemQueueHead == 0) ||
+            (g_NotifyCallbacks.IopNetworkFileSystemQueueHead == 0))
+        {
+            if (!FindIopFileSystemQueueHeads(&g_NotifyCallbacks.IopCdRomFileSystemQueueHead,
+                &g_NotifyCallbacks.IopDiskFileSystemQueueHead,
+                &g_NotifyCallbacks.IopTapeFileSystemQueueHead,
+                &g_NotifyCallbacks.IopNetworkFileSystemQueueHead))
+            {
+#ifdef _DEBUG
+                OutputDebugString(TEXT("Could not locate all Iop listheads\r\n"));
+#endif
+            }
+        }
+
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        MessageBox(hwndDlg, TEXT("An exception occured during callback query"), NULL, MB_ICONERROR);
+    }
+
+    Modules = (PRTL_PROCESS_MODULES)supGetSystemInfo(SystemModuleInformation);
+    if (Modules == NULL) {
+        MessageBox(hwndDlg, TEXT("Could not allocate memory for modules list."), NULL, MB_ICONERROR);
+        return;
+    }
+
     __try {
 
         //
         // List process callbacks.
         //
-        if (g_NotifyCallbacks.PspCreateProcessNotifyRoutine == 0)
-            g_NotifyCallbacks.PspCreateProcessNotifyRoutine = FindPspCreateProcessNotifyRoutine();
 
         if (g_NotifyCallbacks.PspCreateProcessNotifyRoutine) {
 
-            DumpPsCallbacks(ListView,
+            DumpPsCallbacks(TreeList,
                 TEXT("CreateProcess"),
-                g_NotifyCallbacks.PspCreateProcessNotifyRoutine);
+                g_NotifyCallbacks.PspCreateProcessNotifyRoutine,
+                Modules);
 
         }
 
         //
         // List thread callbacks.
         //
-        if (g_NotifyCallbacks.PspCreateThreadNotifyRoutine == 0)
-            g_NotifyCallbacks.PspCreateThreadNotifyRoutine = FindPspCreateThreadNotifyRoutine();
         if (g_NotifyCallbacks.PspCreateThreadNotifyRoutine) {
 
-            DumpPsCallbacks(ListView,
+            DumpPsCallbacks(TreeList,
                 TEXT("CreateThread"),
-                g_NotifyCallbacks.PspCreateThreadNotifyRoutine);
+                g_NotifyCallbacks.PspCreateThreadNotifyRoutine,
+                Modules);
 
         }
 
         //
         // List load image callbacks.
         //
-        if (g_NotifyCallbacks.PspLoadImageNotifyRoutine == 0)
-            g_NotifyCallbacks.PspLoadImageNotifyRoutine = FindPspLoadImageNotifyRoutine();
         if (g_NotifyCallbacks.PspLoadImageNotifyRoutine) {
 
-            DumpPsCallbacks(ListView,
+            DumpPsCallbacks(TreeList,
                 TEXT("LoadImage"),
-                g_NotifyCallbacks.PspLoadImageNotifyRoutine);
+                g_NotifyCallbacks.PspLoadImageNotifyRoutine,
+                Modules);
 
         }
 
         //
         // List KeBugCheck callbacks.
         //
-        if (g_NotifyCallbacks.KeBugCheckCallbackHead == 0)
-            g_NotifyCallbacks.KeBugCheckCallbackHead = FindKeBugCheckCallbackHead();
         if (g_NotifyCallbacks.KeBugCheckCallbackHead) {
 
-            DumpKeBugCheckCallbacks(ListView,
+            DumpKeBugCheckCallbacks(TreeList,
                 TEXT("BugCheck"),
-                g_NotifyCallbacks.KeBugCheckCallbackHead);
+                g_NotifyCallbacks.KeBugCheckCallbackHead,
+                Modules);
 
         }
 
-        if (g_NotifyCallbacks.KeBugCheckReasonCallbackHead == 0)
-            g_NotifyCallbacks.KeBugCheckReasonCallbackHead = FindKeBugCheckReasonCallbackHead();
         if (g_NotifyCallbacks.KeBugCheckReasonCallbackHead) {
 
-            DumpKeBugCheckReasonCallbacks(ListView,
+            DumpKeBugCheckReasonCallbacks(TreeList,
                 TEXT("BugCheckReason"),
-                g_NotifyCallbacks.KeBugCheckReasonCallbackHead);
+                g_NotifyCallbacks.KeBugCheckReasonCallbackHead,
+                Modules);
 
         }
 
         //
         // List Cm callbacks
         //
-        if (g_NotifyCallbacks.CmCallbackListHead == 0)
-            g_NotifyCallbacks.CmCallbackListHead = FindCmCallbackHead();
         if (g_NotifyCallbacks.CmCallbackListHead) {
 
-            DumpCmCallbacks(ListView,
+            DumpCmCallbacks(TreeList,
                 TEXT("CmRegistry"),
-                g_NotifyCallbacks.CmCallbackListHead);
+                g_NotifyCallbacks.CmCallbackListHead,
+                Modules);
 
         }
 
         //
         // List Io Shutdown callbacks.
         //
-        if (g_NotifyCallbacks.IopNotifyShutdownQueueHead == 0)
-            g_NotifyCallbacks.IopNotifyShutdownQueueHead = FindIopNotifyShutdownQueueHeadHead(FALSE);
         if (g_NotifyCallbacks.IopNotifyShutdownQueueHead) {
 
-            DumpIoCallbacks(ListView,
+            DumpIoCallbacks(TreeList,
                 TEXT("Shutdown"),
-                g_NotifyCallbacks.IopNotifyShutdownQueueHead);
+                g_NotifyCallbacks.IopNotifyShutdownQueueHead,
+                Modules);
 
         }
-        if (g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead == 0)
-            g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead = FindIopNotifyShutdownQueueHeadHead(TRUE);
         if (g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead) {
 
-            DumpIoCallbacks(ListView,
+            DumpIoCallbacks(TreeList,
                 TEXT("LastChanceShutdown"),
-                g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead);
+                g_NotifyCallbacks.IopNotifyLastChanceShutdownQueueHead,
+                Modules);
 
         }
 
         //
         // List Ob callbacks.
         //
-        if (g_NotifyCallbacks.ObProcessCallbackHead == 0)
-            g_NotifyCallbacks.ObProcessCallbackHead = GetObjectTypeCallbackListHeadByType(0);
         if (g_NotifyCallbacks.ObProcessCallbackHead) {
 
-            DumpObCallbacks(ListView,
+            DumpObCallbacks(TreeList,
                 TEXT("ObProcess"),
-                g_NotifyCallbacks.ObProcessCallbackHead);
+                g_NotifyCallbacks.ObProcessCallbackHead,
+                Modules);
 
         }
-        if (g_NotifyCallbacks.ObThreadCallbackHead == 0)
-            g_NotifyCallbacks.ObThreadCallbackHead = GetObjectTypeCallbackListHeadByType(1);
         if (g_NotifyCallbacks.ObThreadCallbackHead) {
 
-            DumpObCallbacks(ListView,
+            DumpObCallbacks(TreeList,
                 TEXT("ObThread"),
-                g_NotifyCallbacks.ObThreadCallbackHead);
+                g_NotifyCallbacks.ObThreadCallbackHead,
+                Modules);
 
         }
-        if (g_NotifyCallbacks.ObDesktopCallbackHead == 0)
-            g_NotifyCallbacks.ObDesktopCallbackHead = GetObjectTypeCallbackListHeadByType(2);
         if (g_NotifyCallbacks.ObDesktopCallbackHead) {
 
-            DumpObCallbacks(ListView,
+            DumpObCallbacks(TreeList,
                 TEXT("ObDesktop"),
-                g_NotifyCallbacks.ObDesktopCallbackHead);
+                g_NotifyCallbacks.ObDesktopCallbackHead,
+                Modules);
 
         }
 
         //
         // List Se callbacks.
         //
-        if (g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead == 0)
-            g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead = FindSeFileSystemNotifyRoutinesHead(FALSE);
         if (g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead) {
 
-            DumpSeCallbacks(ListView,
+            DumpSeCallbacks(TreeList,
                 TEXT("SeFileSystem"),
-                g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead);
+                g_NotifyCallbacks.SeFileSystemNotifyRoutinesHead,
+                Modules);
 
         }
-        if (g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead == 0)
-            g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead = FindSeFileSystemNotifyRoutinesHead(TRUE);
         if (g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead) {
 
-            DumpSeCallbacks(ListView,
+            DumpSeCallbacks(TreeList,
                 TEXT("SeFileSystemEx"),
-                g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead);
+                g_NotifyCallbacks.SeFileSystemNotifyRoutinesExHead,
+                Modules);
 
         }
 
         //
         // List Po callbacks.
         //
-        if (g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks == 0)
-            g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks = FindPopRegisteredPowerSettingCallbacks();
         if (g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks) {
 
-            DumpPoCallbacks(ListView,
+            DumpPoCallbacks(TreeList,
                 TEXT("PowerSettings"),
-                g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks);
+                g_NotifyCallbacks.PopRegisteredPowerSettingCallbacks,
+                Modules);
 
         }
 
         //
         // List Dbg callbacks
         //
-        if (g_NotifyCallbacks.RtlpDebugPrintCallbackList == 0)
-            g_NotifyCallbacks.RtlpDebugPrintCallbackList = FindRtlpDebugPrintCallbackList();
         if (g_NotifyCallbacks.RtlpDebugPrintCallbackList) {
 
-            DumpDbgPrintCallbacks(ListView,
+            DumpDbgPrintCallbacks(TreeList,
                 TEXT("DbgPrint"),
-                g_NotifyCallbacks.RtlpDebugPrintCallbackList);
+                g_NotifyCallbacks.RtlpDebugPrintCallbackList,
+                Modules);
 
         }
 
+        //
+        // List IoFsRegistration callbacks
+        //
+        if (g_NotifyCallbacks.IopFsNotifyChangeQueueHead) {
+
+            DumpIoFsRegistrationCallbacks(TreeList,
+                TEXT("IoFsRegistration"),
+                g_NotifyCallbacks.IopFsNotifyChangeQueueHead,
+                Modules);
+
+        }
+
+        //
+        // List Io File System callbacks
+        //
+        if (g_NotifyCallbacks.IopDiskFileSystemQueueHead) {
+
+            DumpIoFileSystemCallbacks(TreeList,
+                TEXT("IoDiskFs"),
+                g_NotifyCallbacks.IopDiskFileSystemQueueHead,
+                Modules);
+        }
+        if (g_NotifyCallbacks.IopCdRomFileSystemQueueHead) {
+
+            DumpIoFileSystemCallbacks(TreeList,
+                TEXT("IoCdRomFs"),
+                g_NotifyCallbacks.IopCdRomFileSystemQueueHead,
+                Modules);
+        }
+        if (g_NotifyCallbacks.IopNetworkFileSystemQueueHead) {
+
+            DumpIoFileSystemCallbacks(TreeList,
+                TEXT("IoNetworkFs"),
+                g_NotifyCallbacks.IopNetworkFileSystemQueueHead,
+                Modules);
+        }
+        if (g_NotifyCallbacks.IopTapeFileSystemQueueHead) {
+
+            DumpIoFileSystemCallbacks(TreeList,
+                TEXT("IoTapeFs"),
+                g_NotifyCallbacks.IopTapeFileSystemQueueHead,
+                Modules);
+        }
+
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        MessageBox(hwndDlg, TEXT("An exception occured during callback query/list"), NULL, MB_ICONERROR);
+    __finally {
+        supHeapFree(Modules);
     }
 }
 
 /*
-* CallbacksCompareFunc
+* CallbacksDialogHandlePopupMenu
 *
 * Purpose:
 *
-* Callbacks Dialog listview comparer function.
+* Callback treelist popup construction
 *
 */
-INT CALLBACK CallbacksCompareFunc(
-    _In_ LPARAM lParam1,
-    _In_ LPARAM lParam2,
-    _In_ LPARAM lParamSort //pointer to EXTRASCALLBACK
+VOID CallbacksDialogHandlePopupMenu(
+    _In_ HWND hwndDlg
 )
 {
-    INT nResult = 0;
-    LPARAM SortColumn;
+    POINT pt1;
+    HMENU hMenu;
 
-    EXTRASCONTEXT *pDlgContext;
-    EXTRASCALLBACK *CallbackParam = (EXTRASCALLBACK*)lParamSort;
+    if (GetCursorPos(&pt1) == FALSE)
+        return;
 
-    if (CallbackParam == NULL)
-        return 0;
-
-    pDlgContext = (EXTRASCONTEXT*)CallbackParam->Value;
-    SortColumn = CallbackParam->lParam;
-
-    switch (SortColumn) {
-    case 0: //Address
-        return supGetMaxOfTwoU64FromHex(
-            pDlgContext->ListView,
-            lParam1,
-            lParam2,
-            SortColumn,
-            pDlgContext->bInverseSort);
-
-    case 1: //Type
-    case 2: //Module
-    case 3: //Additional Info
-        return supGetMaxCompareTwoFixedStrings(
-            pDlgContext->ListView,
-            lParam1,
-            lParam2,
-            SortColumn,
-            pDlgContext->bInverseSort);
+    hMenu = CreatePopupMenu();
+    if (hMenu) {
+        InsertMenu(hMenu, 0, MF_BYCOMMAND, ID_OBJECT_COPY, T_COPYADDRESS);
+        TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_LEFTALIGN, pt1.x, pt1.y, 0, hwndDlg, NULL);
+        DestroyMenu(hMenu);
     }
-
-    return nResult;
 }
 
 /*
-* CallbacksHandleNotify
+* CallbacksDialogResize
 *
 * Purpose:
 *
-* WM_NOTIFY processing for dialog listview.
+* WM_SIZE handler.
 *
 */
-VOID CallbacksHandleNotify(
-    _In_ LPARAM lParam,
-    _In_ EXTRASCONTEXT *pDlgContext
+INT_PTR CallbacksDialogResize(
+    _In_ HWND hwndDlg,
+    _In_ HWND hwndSizeGrip,
+    _In_ HWND hwndTreeList
 )
 {
-    LPNMHDR  nhdr = (LPNMHDR)lParam;
-    INT      nImageIndex;
+    RECT r1;
+    INT  cy;
 
-    EXTRASCALLBACK CallbackParam;
+    RtlSecureZeroMemory(&r1, sizeof(r1));
 
-    if (nhdr == NULL)
-        return;
+    GetClientRect(hwndDlg, &r1);
 
-    if (nhdr->hwndFrom != pDlgContext->ListView)
-        return;
+    cy = r1.bottom - 24;
+    if (hwndSizeGrip)
+        cy -= GRIPPER_SIZE;
 
-    switch (nhdr->code) {
+    SetWindowPos(hwndTreeList, 0, 0, 0,
+        r1.right - 24,
+        cy,
+        SWP_NOMOVE | SWP_NOZORDER);
 
-    case LVN_COLUMNCLICK:
-        pDlgContext->bInverseSort = !pDlgContext->bInverseSort;
-        pDlgContext->lvColumnToSort = ((NMLISTVIEW *)lParam)->iSubItem;
-        CallbackParam.lParam = (LPARAM)pDlgContext->lvColumnToSort;
-        CallbackParam.Value = (ULONG_PTR)pDlgContext;
-        ListView_SortItemsEx(pDlgContext->ListView, &CallbacksCompareFunc, (LPARAM)&CallbackParam);
+    if (hwndSizeGrip)
+        supSzGripWindowOnResize(hwndDlg, hwndSizeGrip);
 
-        nImageIndex = ImageList_GetImageCount(g_ListViewImages);
-        if (pDlgContext->bInverseSort)
-            nImageIndex -= 2;
-        else
-            nImageIndex -= 1;
+    return 1;
+}
 
-        supUpdateLvColumnHeaderImage(
-            pDlgContext->ListView,
-            pDlgContext->lvColumnCount,
-            pDlgContext->lvColumnToSort,
-            nImageIndex);
+/*
+* CallbacksDialogCopyAddress
+*
+* Purpose:
+*
+* Copy selected treelist item first column to clipboard.
+*
+*/
+VOID CallbacksDialogCopyAddress(
+    _In_ HWND TreeList
+)
+{
+    TVITEMEX    itemex;
+    WCHAR       szText[MAX_PATH + 1];
 
-        break;
+    szText[0] = 0;
+    RtlSecureZeroMemory(&itemex, sizeof(itemex));
+    itemex.mask = TVIF_TEXT;
+    itemex.hItem = TreeList_GetSelection(TreeList);
+    itemex.pszText = szText;
+    itemex.cchTextMax = MAX_PATH;
 
-    default:
-        break;
+    if (TreeList_GetTreeItem(TreeList, &itemex, NULL)) {
+        supClipboardCopy(szText, sizeof(szText));
     }
 }
 
@@ -2053,22 +2647,15 @@ INT_PTR CALLBACK CallbacksDialogProc(
 
     case WM_GETMINMAXINFO:
         if (lParam) {
-            ((PMINMAXINFO)lParam)->ptMinTrackSize.x = 800;
-            ((PMINMAXINFO)lParam)->ptMinTrackSize.y = 600;
-        }
-        break;
-
-    case WM_NOTIFY:
-        pDlgContext = (EXTRASCONTEXT*)GetProp(hwndDlg, T_DLGCONTEXT);
-        if (pDlgContext) {
-            CallbacksHandleNotify(lParam, pDlgContext);
+            ((PMINMAXINFO)lParam)->ptMinTrackSize.x = 640;
+            ((PMINMAXINFO)lParam)->ptMinTrackSize.y = 480;
         }
         break;
 
     case WM_SIZE:
         pDlgContext = (EXTRASCONTEXT*)GetProp(hwndDlg, T_DLGCONTEXT);
         if (pDlgContext) {
-            extrasSimpleListResize(hwndDlg, pDlgContext->SizeGrip);
+            CallbacksDialogResize(hwndDlg, pDlgContext->SizeGrip, pDlgContext->TreeList);
         }
         break;
 
@@ -2084,9 +2671,19 @@ INT_PTR CALLBACK CallbacksDialogProc(
         return DestroyWindow(hwndDlg);
 
     case WM_COMMAND:
-        if (LOWORD(wParam) == IDCANCEL) {
+
+        switch (LOWORD(wParam)) {
+        case IDCANCEL:
             SendMessage(hwndDlg, WM_CLOSE, 0, 0);
             return TRUE;
+        case ID_OBJECT_COPY:
+            pDlgContext = (EXTRASCONTEXT*)GetProp(hwndDlg, T_DLGCONTEXT);
+            if (pDlgContext) {
+                CallbacksDialogCopyAddress(pDlgContext->TreeList);
+            }
+            break;
+        default:
+            break;
         }
         break;
 
@@ -2095,8 +2692,9 @@ INT_PTR CALLBACK CallbacksDialogProc(
         break;
 
     case WM_CONTEXTMENU:
-        //FIXME
+        CallbacksDialogHandlePopupMenu(hwndDlg);
         break;
+
     }
 
     return FALSE;
@@ -2115,11 +2713,12 @@ VOID extrasCreateCallbacksDialog(
 )
 {
     HWND        hwndDlg;
-    LVCOLUMN    col;
+
+    HDITEM      hdritem;
+    RECT        rc;
 
     EXTRASCONTEXT  *pDlgContext;
 
-    EXTRASCALLBACK CallbackParam;
 
     //allow only one dialog
     if (g_WinObj.AuxDialogs[wobjCallbacksDlgId]) {
@@ -2136,7 +2735,7 @@ VOID extrasCreateCallbacksDialog(
 
     hwndDlg = CreateDialogParam(
         g_WinObj.hInstance,
-        MAKEINTRESOURCE(IDD_DIALOG_EXTRASLIST),
+        MAKEINTRESOURCE(IDD_DIALOG_TREELIST_PLACEHOLDER),
         hwndParent,
         &CallbacksDialogProc,
         (LPARAM)pDlgContext);
@@ -2152,68 +2751,30 @@ VOID extrasCreateCallbacksDialog(
     extrasSetDlgIcon(hwndDlg);
     SetWindowText(hwndDlg, TEXT("Notification Callbacks"));
 
-    pDlgContext->ListView = GetDlgItem(hwndDlg, ID_EXTRASLIST);
-    if (pDlgContext->ListView) {
+    GetClientRect(hwndParent, &rc);
+    g_CbTreeListAtom = InitializeTreeListControl();
+    pDlgContext->TreeList = CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREELIST, NULL,
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | TLSTYLE_COLAUTOEXPAND, 12, 14,
+        rc.right - 24, rc.bottom - 24, hwndDlg, NULL, NULL, NULL);
 
-        //
-        // Set listview imagelist, style flags and theme.
-        //
-        ListView_SetImageList(
-            pDlgContext->ListView,
-            g_ListViewImages,
-            LVSIL_SMALL);
+    if (pDlgContext->TreeList) {
+        RtlSecureZeroMemory(&hdritem, sizeof(hdritem));
+        hdritem.mask = HDI_FORMAT | HDI_TEXT | HDI_WIDTH;
+        hdritem.fmt = HDF_LEFT | HDF_BITMAP_ON_RIGHT | HDF_STRING;
+        hdritem.cxy = 150;
+        hdritem.pszText = TEXT("Routine Address");
+        TreeList_InsertHeaderItem(pDlgContext->TreeList, 0, &hdritem);
 
-        ListView_SetExtendedListViewStyle(
-            pDlgContext->ListView,
-            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_GRIDLINES | LVS_EX_LABELTIP);
+        hdritem.cxy = 300;
+        hdritem.pszText = TEXT("Module");
+        TreeList_InsertHeaderItem(pDlgContext->TreeList, 1, &hdritem);
 
-        SetWindowTheme(pDlgContext->ListView, TEXT("Explorer"), NULL);
+        hdritem.cxy = 200;
+        hdritem.pszText = TEXT("Additional Information");
+        TreeList_InsertHeaderItem(pDlgContext->TreeList, 2, &hdritem);
 
-        //columns
-        RtlSecureZeroMemory(&col, sizeof(col));
-        col.mask = LVCF_TEXT | LVCF_SUBITEM | LVCF_FMT | LVCF_WIDTH | LVCF_ORDER | LVCF_IMAGE;
-        col.iSubItem++;
-        col.pszText = TEXT("Routine Address");
-        col.cx = 150;
-        col.fmt = LVCFMT_CENTER | LVCFMT_BITMAP_ON_RIGHT;
-        col.iImage = ImageList_GetImageCount(g_ListViewImages) - 1;
-        ListView_InsertColumn(pDlgContext->ListView, col.iSubItem, &col);
-
-        col.iImage = I_IMAGENONE;
-
-        col.fmt = LVCFMT_CENTER | LVCFMT_BITMAP_ON_RIGHT;
-        col.iSubItem++;
-        col.pszText = TEXT("Type");
-        col.iOrder++;
-        col.cx = 120;
-        ListView_InsertColumn(pDlgContext->ListView, col.iSubItem, &col);
-
-        col.fmt = LVCFMT_LEFT | LVCFMT_BITMAP_ON_RIGHT;
-        col.iSubItem++;
-        col.pszText = TEXT("Module");
-        col.iOrder++;
-        col.cx = 300;
-        col.fmt = LVCFMT_LEFT;
-        ListView_InsertColumn(pDlgContext->ListView, col.iSubItem, &col);
-
-        col.fmt = LVCFMT_LEFT | LVCFMT_BITMAP_ON_RIGHT;
-        col.iSubItem++;
-        col.pszText = TEXT("Additional Info");
-        col.iOrder++;
-        col.cx = 200;
-        col.fmt = LVCFMT_LEFT;
-        ListView_InsertColumn(pDlgContext->ListView, col.iSubItem, &col);
-
-        //remember column count
-        pDlgContext->lvColumnCount = col.iSubItem;
-
-        SendMessage(hwndDlg, WM_SIZE, 0, 0);
-
-        CallbacksList(pDlgContext->hwndDlg, pDlgContext->ListView);
-
-        CallbackParam.lParam = 1; //sort by callback type
-        CallbackParam.Value = (ULONG_PTR)pDlgContext;
-        ListView_SortItemsEx(pDlgContext->ListView, &CallbacksCompareFunc, (LPARAM)&CallbackParam);
-        SetFocus(pDlgContext->ListView);
+        CallbacksList(hwndDlg, pDlgContext->TreeList);
     }
+
+    SendMessage(hwndDlg, WM_SIZE, 0, 0);
 }

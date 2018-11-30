@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        23 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -44,7 +44,7 @@ HWND g_NamespacePropWindow = NULL;
 *
 * Purpose:
 *
-* Close currently viewed object handle depending on type
+* Close handle opened with propOpenCurrentObject.
 *
 */
 BOOL propCloseCurrentObject(
@@ -54,16 +54,27 @@ BOOL propCloseCurrentObject(
 {
     BOOL bResult = FALSE;
 
-    switch (Context->TypeIndex) {
-    case ObjectTypeWinstation:
-        bResult = CloseWindowStation((HWINSTA)hObject);
-        break;
-    case ObjectTypeDesktop:
-        bResult = CloseDesktop((HDESK)hObject);
-        break;
-    default:
+    if ((Context == NULL) && (hObject != NULL)) {
         bResult = NT_SUCCESS(NtClose(hObject));
-        break;
+    }
+    else {
+
+        switch (Context->TypeIndex) {
+        case ObjectTypeWinstation:
+            if (g_WinObj.EnableExperimentalFeatures) {
+                bResult = NT_SUCCESS(NtClose(hObject));
+            }
+            else {
+                bResult = CloseWindowStation((HWINSTA)hObject);
+            }
+            break;
+        case ObjectTypeDesktop:
+            bResult = CloseDesktop((HDESK)hObject);
+            break;
+        default:
+            bResult = NT_SUCCESS(NtClose(hObject));
+            break;
+        }
     }
 
     return bResult;
@@ -112,10 +123,18 @@ BOOL propOpenCurrentObject(
     // Handle window station type.
     //
     if (Context->TypeIndex == ObjectTypeWinstation) {
-        hObject = supOpenWindowStationFromContext(Context, FALSE, DesiredAccess); //WINSTA_READATTRIBUTES for query
+        if (g_WinObj.EnableExperimentalFeatures) {
+            hObject = supOpenWindowStationFromContextEx(Context, FALSE, DesiredAccess); //WINSTA_READATTRIBUTES for query
+        }
+        else {
+            hObject = supOpenWindowStationFromContext(Context, FALSE, DesiredAccess); //WINSTA_READATTRIBUTES for query
+        }
         bResult = (hObject != NULL);
         if (bResult) {
             *phObject = hObject;
+        }
+        else {
+            SetLastError(ERROR_INVALID_PARAMETER);
         }
         return bResult;
     }
@@ -699,7 +718,7 @@ VOID propCreateDialog(
     SecurityPage = propSecurityCreatePage(
         propContext, //Context
         (POPENOBJECTMETHOD)&propOpenCurrentObject, //OpenObjectMethod
-        NULL, //CloseObjectMethod, use default
+        (PCLOSEOBJECTMETHOD)&propCloseCurrentObject,//CloseObjectMethod
         SI_EDIT_AUDITS | SI_EDIT_OWNER | SI_EDIT_PERMS | //psiFlags
         SI_ADVANCED | SI_NO_ACL_PROTECT | SI_NO_TREE_APPLY |
         SI_PAGE_TITLE

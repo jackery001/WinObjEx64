@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        22 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -682,7 +682,8 @@ VOID extrasCreatePsListDialog(
     }
 
     RtlSecureZeroMemory(&PsDlgContext, sizeof(PsDlgContext));
-    PsDlgContext.hwndDlg = CreateDialogParam(g_WinObj.hInstance, MAKEINTRESOURCE(IDD_DIALOG_PSLIST),
+    PsDlgContext.hwndDlg = CreateDialogParam(g_WinObj.hInstance, 
+        MAKEINTRESOURCE(IDD_DIALOG_TREELIST_PLACEHOLDER),
         hwndParent, &PsListDialogProc, 0);
 
     if (PsDlgContext.hwndDlg == NULL) {
@@ -694,6 +695,7 @@ VOID extrasCreatePsListDialog(
     PsDlgContext.SizeGrip = supCreateSzGripWindow(PsDlgContext.hwndDlg);
 
     extrasSetDlgIcon(PsDlgContext.hwndDlg);
+    SetWindowText(PsDlgContext.hwndDlg, TEXT("Processes"));
 
     GetClientRect(hwndParent, &rc);
     g_PsTreeListAtom = InitializeTreeListControl();

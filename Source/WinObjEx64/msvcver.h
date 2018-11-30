@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        19 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Visual Studio compiler version determination.
 *

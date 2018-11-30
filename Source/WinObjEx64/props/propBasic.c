@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        22 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -48,14 +48,14 @@ VOID propSetProcessTrustLabelInfo(
         return;
     }
 
-    if (supQueryObjectTrustLabel(hObject, 
-        &ProtectionType, 
-        &ProtectionLevel)) 
+    if (supQueryObjectTrustLabel(hObject,
+        &ProtectionType,
+        &ProtectionLevel))
     {
         szBuffer[0] = 0;
 
-        for (i = 0; i < MAX_KNOWN_TRUSTLABEL_PROTECTIONTYPE; i++) 
-            if (TrustLabelProtectionType[i].dwValue == ProtectionType) 
+        for (i = 0; i < MAX_KNOWN_TRUSTLABEL_PROTECTIONTYPE; i++)
+            if (TrustLabelProtectionType[i].dwValue == ProtectionType)
             {
                 lpType = TrustLabelProtectionType[i].lpDescription;
                 break;
@@ -219,16 +219,13 @@ VOID propBasicQueryDirectory(
     }
 
     //
-    // Open object directory.
+    // Open object directory and query info.
     //
     hObject = NULL;
-    if (!propOpenCurrentObject(Context, &hObject, DIRECTORY_QUERY)) {
-        return;
+    if (propOpenCurrentObject(Context, &hObject, DIRECTORY_QUERY)) {
+        propSetDefaultInfo(Context, hwndDlg, hObject);
+        propCloseCurrentObject(Context, hObject);
     }
-
-    propSetDefaultInfo(Context, hwndDlg, hObject);
-
-    NtClose(hObject);
 }
 
 /*
@@ -291,7 +288,8 @@ VOID propBasicQuerySemaphore(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -345,7 +343,8 @@ VOID propBasicQueryIoCompletion(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -421,7 +420,8 @@ VOID propBasicQueryTimer(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -502,7 +502,8 @@ VOID propBasicQueryEvent(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -588,7 +589,7 @@ VOID propBasicQuerySymlink(
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
 
-    NtClose(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -677,7 +678,7 @@ VOID propBasicQueryKey(
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
 
-    NtClose(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -742,7 +743,7 @@ VOID propBasicQueryMutant(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -937,7 +938,7 @@ VOID propBasicQuerySection(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -989,7 +990,7 @@ VOID propBasicQueryWindowStation(
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
 
-    CloseWindowStation(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -1092,7 +1093,7 @@ VOID propBasicQueryMemoryPartition(
     // Query object basic and type info if needed.
     //
     propSetDefaultInfo(Context, hwndDlg, hObject);
-    NtClose(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -1324,10 +1325,10 @@ VOID propBasicQueryJob(
                         // Query process name.
                         //
                         if (!supQueryProcessName(
-                            ProcessId, 
-                            ProcessList, 
-                            szProcessName, 
-                            MAX_PATH)) 
+                            ProcessId,
+                            ProcessList,
+                            szProcessName,
+                            MAX_PATH))
                         {
                             _strcpy(szProcessName, TEXT("UnknownProcess"));
                         }
@@ -1352,7 +1353,7 @@ VOID propBasicQueryJob(
     if (ExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hObject);
     }
-    NtClose(hObject);
+    propCloseCurrentObject(Context, hObject);
 }
 
 /*
@@ -1514,7 +1515,7 @@ VOID propBasicQueryDesktop(
     if (bExtendedInfoAvailable == FALSE) {
         propSetDefaultInfo(Context, hwndDlg, hDesktop);
     }
-    CloseDesktop((HDESK)hDesktop);
+    propCloseCurrentObject(Context, (HANDLE)hDesktop);
 }
 
 /*
@@ -1696,8 +1697,8 @@ INT_PTR CALLBACK BasicPropDialogProc(
         if (Context) {
             hDc = BeginPaint(hwndDlg, &Paint);
             if (hDc) {
-                
-                ImageList_Draw(g_ListViewImages, Context->TypeIndex, hDc, 24, 34, 
+
+                ImageList_Draw(g_ListViewImages, Context->TypeIndex, hDc, 24, 34,
                     ILD_NORMAL | ILD_TRANSPARENT);
 
                 EndPaint(hwndDlg, &Paint);

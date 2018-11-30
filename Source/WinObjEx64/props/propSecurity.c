@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        22 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -188,34 +188,6 @@ ACCESS_MASK propGetObjectAccessMask(
     return AccessMask;
 }
 
-/*
-* propDefaultCloseObject
-*
-* Purpose:
-*
-* Dereference.
-*
-*/
-VOID propDefaultCloseObject(
-    _In_ IObjectSecurity * This,
-    _In_ HANDLE hObject
-)
-{
-    if ((hObject != NULL) && (This->ObjectContext)) {
-        switch (This->ObjectContext->TypeIndex) {
-        case ObjectTypeWinstation:
-            CloseWindowStation((HWINSTA)hObject);
-            break;
-        case ObjectTypeDesktop:
-            CloseDesktop((HDESK)hObject);
-            break;
-        default:
-            NtClose(hObject);
-            break;
-        }
-    }
-}
-
 HRESULT STDMETHODCALLTYPE QueryInterface(
     _In_ IObjectSecurity * This,
     _In_ REFIID riid,
@@ -353,7 +325,7 @@ HRESULT STDMETHODCALLTYPE GetSecurity(
 
 Done:
     //cleanup
-    This->CloseObjectMethod(This, hObject);
+    This->CloseObjectMethod(This->ObjectContext, hObject);
     return hResult;
 }
 
@@ -375,7 +347,7 @@ HRESULT STDMETHODCALLTYPE SetSecurity(
     status = NtSetSecurityObject(hObject, SecurityInformation, pSecurityDescriptor);
 
     //cleanup
-    This->CloseObjectMethod(This, hObject);
+    This->CloseObjectMethod(This->ObjectContext, hObject);
     return HRESULT_FROM_WIN32(RtlNtStatusToDosError(status));
 }
 
@@ -447,7 +419,7 @@ HRESULT propSecurityConstructor(
     _In_ IObjectSecurity *This,
     _In_ PROP_OBJECT_INFO *Context,
     _In_ POPENOBJECTMETHOD OpenObjectMethod,
-    _In_opt_ PCLOSEOBJECTMETHOD CloseObjectMethod,
+    _In_ PCLOSEOBJECTMETHOD CloseObjectMethod,
     _In_ ULONG psiFlags
 )
 {
@@ -462,14 +434,7 @@ HRESULT propSecurityConstructor(
 
     do {
         This->OpenObjectMethod = OpenObjectMethod;
-
-        //if no close method specified, use default
-        if (CloseObjectMethod == NULL) {
-            This->CloseObjectMethod = (PCLOSEOBJECTMETHOD)propDefaultCloseObject;
-        }
-        else {
-            This->CloseObjectMethod = CloseObjectMethod;
-        }
+        This->CloseObjectMethod = CloseObjectMethod;
 
         if (!This->OpenObjectMethod(Context, &hObject, READ_CONTROL)) {
             hResult = E_ACCESSDENIED;
@@ -550,7 +515,7 @@ HRESULT propSecurityConstructor(
     } while (cond);
 
     //cleanup
-    This->CloseObjectMethod(This, hObject);
+    This->CloseObjectMethod(This->ObjectContext, hObject);
     if (TypeInfo) {
         supHeapFree(TypeInfo);
     }
@@ -578,7 +543,7 @@ HRESULT propSecurityConstructor(
 HPROPSHEETPAGE propSecurityCreatePage(
     _In_ PROP_OBJECT_INFO *Context,
     _In_ POPENOBJECTMETHOD OpenObjectMethod,
-    _In_opt_ PCLOSEOBJECTMETHOD CloseObjectMethod,
+    _In_ PCLOSEOBJECTMETHOD CloseObjectMethod,
     _In_ ULONG psiFlags
 )
 {

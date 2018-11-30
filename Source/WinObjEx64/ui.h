@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        23 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Common header file for the user interface.
 *
@@ -49,6 +49,7 @@ typedef HWND(WINAPI *pfnHtmlHelpW)(
 #define T_COPYTEXTROW           L"Copy Row Selection"
 #define T_COPYEPROCESS          L"Copy EPROCESS value"
 #define T_COPYVALUE             L"Copy Value Field Text"
+#define T_COPYADDRESS           L"Copy Address Field Text"
 #define T_COPYADDINFO           L"Copy Additional Info Field Text"
 #define T_SAVETOFILE            L"Save list to File"
 #define T_DUMPDRIVER            L"Dump Driver"

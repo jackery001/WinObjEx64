@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        16 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Windows/Native API which we cannot statically link because have to support Windows 7
 *
@@ -36,11 +36,17 @@ typedef BOOL (WINAPI *pfnIsImmersiveProcess)(
     HANDLE hProcess
     );
 
-#define EXTAPI_ALL_MAPPED 2
+typedef HWINSTA(NTAPI* pfnNtUserOpenWindowStation)(
+    _In_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ACCESS_MASK DesiredAccess
+    );
+
+#define EXTAPI_ALL_MAPPED 3
 
 typedef struct _EXTENDED_API_SET {
     ULONG NumberOfAPI;
     pfnNtOpenPartition NtOpenPartition;
+    pfnNtUserOpenWindowStation NtUserOpenWindowStation;
     pfnIsImmersiveProcess IsImmersiveProcess;
 } EXTENDED_API_SET, *PEXTENDED_API_SET;
 

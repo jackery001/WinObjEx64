@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        21 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Common header file for the Windows Object Explorer.
 *
@@ -94,6 +94,7 @@
 #endif
 
 typedef struct _WINOBJ_GLOBALS {
+    BOOL EnableExperimentalFeatures;
     HINSTANCE hInstance;
     HANDLE Heap;
     LPWSTR CurrentObjectPath;

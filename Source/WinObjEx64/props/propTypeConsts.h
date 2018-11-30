@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        25 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Consts header file for Type property sheet.
 *
@@ -48,13 +48,13 @@ static LPCWSTR T_ObjectTypeFlags[] = {
 
 static LPCWSTR T_ObjectTypeFlags2[] = {
    L"UseExtendedParameters",    //8
-   L"Reserved",
-   L"Reserved",
-   L"Reserved",
-   L"Reserved",
-   L"Reserved",
-   L"Reserved",
-   L"Reserved"
+   L"UnknownFlag",
+   L"UnknownFlag",
+   L"UnknownFlag",
+   L"UnknownFlag",
+   L"UnknownFlag",
+   L"UnknownFlag",
+   L"UnknownFlag"
 };
 
 //Known Object Attributes

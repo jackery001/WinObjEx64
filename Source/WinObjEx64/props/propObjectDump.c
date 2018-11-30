@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        23 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -2396,7 +2396,8 @@ VOID ObDumpObjectTypeFlags(
     _In_ LPWSTR EntryName,
     _In_ UCHAR ObjectTypeFlags,
     _In_ HTREEITEM h_tviSubItem,
-    _In_ LPWSTR *ObjectTypeFlagsText
+    _In_ LPWSTR *ObjectTypeFlagsText,
+    _In_ BOOLEAN SetEntry
 )
 {
     ULONG i, j;
@@ -2421,13 +2422,14 @@ VOID ObDumpObjectTypeFlags(
                 }
                 TreeListSubitems.Text[1] = lpType;
                 TreeListAddItem(g_TreeList, h_tviSubItem, TVIF_TEXT | TVIF_STATE, 0,
-                    0, (j == 0) ? EntryName : NULL, &TreeListSubitems);
+                    0, (j == 0) ? ((SetEntry) ? EntryName : NULL) : NULL, &TreeListSubitems);
                 j++;
             }
         }
     }
     else {
-        ObDumpByte(g_TreeList, h_tviSubItem, EntryName, NULL, ObjectTypeFlags, 0, 0, FALSE);
+        if (SetEntry)
+            ObDumpByte(g_TreeList, h_tviSubItem, EntryName, NULL, ObjectTypeFlags, 0, 0, FALSE);
     }
 }
 
@@ -2458,6 +2460,8 @@ VOID ObDumpObjectType(
 
     ULONG ObjectSize = 0;
     ULONG ObjectVersion = 0;
+
+    BOOLEAN bSetEntry;
 
     ULONG Key;
     PVOID LockPtr;
@@ -2538,28 +2542,28 @@ VOID ObDumpObjectType(
         //
         // This fields are structure version unaware.
         //
-        ObDumpListEntry(g_TreeList, h_tviRootItem, TEXT("TypeList"), 
+        ObDumpListEntry(g_TreeList, h_tviRootItem, TEXT("TypeList"),
             &ObjectType.Versions.ObjectTypeCompatible->TypeList);
 
-        ObDumpUnicodeString(h_tviRootItem, TEXT("Name"), 
+        ObDumpUnicodeString(h_tviRootItem, TEXT("Name"),
             &ObjectType.Versions.ObjectTypeCompatible->Name, FALSE);
 
-        ObDumpAddress(g_TreeList, h_tviRootItem, TEXT("DefaultObject"), NULL, 
+        ObDumpAddress(g_TreeList, h_tviRootItem, TEXT("DefaultObject"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->DefaultObject, 0, 0);
 
-        ObDumpByte(g_TreeList, h_tviRootItem, T_TYPEINDEX, NULL, 
+        ObDumpByte(g_TreeList, h_tviRootItem, T_TYPEINDEX, NULL,
             ObjectType.Versions.ObjectTypeCompatible->Index, 0, 0, FALSE);
 
-        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("TotalNumberOfObjects"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("TotalNumberOfObjects"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TotalNumberOfObjects, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("TotalNumberOfHandles"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("TotalNumberOfHandles"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TotalNumberOfHandles, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("HighWaterNumberOfObjects"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("HighWaterNumberOfObjects"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->HighWaterNumberOfObjects, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("HighWaterNumberOfHandles"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviRootItem, TEXT("HighWaterNumberOfHandles"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->HighWaterNumberOfHandles, TRUE, FALSE, 0, 0);
 
         //
@@ -2572,7 +2576,7 @@ VOID ObDumpObjectType(
         h_tviSubItem = TreeListAddItem(g_TreeList, h_tviRootItem, TVIF_TEXT | TVIF_STATE, 0,
             0, TEXT("TypeInfo"), &TreeListSubitems);
 
-        ObDumpUlong(g_TreeList, h_tviSubItem, T_LENGTH, NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, T_LENGTH, NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.Length, TRUE, TRUE, 0, 0);
 
         //
@@ -2581,29 +2585,35 @@ VOID ObDumpObjectType(
         ObDumpObjectTypeFlags(T_OBJECT_TYPE_FLAGS,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.ObjectTypeFlags,
             h_tviSubItem,
-            (LPWSTR*)T_ObjectTypeFlags);
+            (LPWSTR*)T_ObjectTypeFlags,
+            TRUE);
 
         if (ObjectVersion > 2) {
 
-            if (ObjectVersion == 3) 
+            if (ObjectVersion == 3) {
+                bSetEntry = TRUE;
                 lpType = T_OBJECT_TYPE_FLAGS2; //fu ms
-            else
+            }
+            else {
+                bSetEntry = FALSE;
                 lpType = T_OBJECT_TYPE_FLAGS;
+            }
 
             ObDumpObjectTypeFlags(lpType,
                 ObjectType.Versions.ObjectType_RS1->TypeInfo.ObjectTypeFlags2,
                 h_tviSubItem,
-                (LPWSTR*)T_ObjectTypeFlags2);
+                (LPWSTR*)T_ObjectTypeFlags2,
+                bSetEntry);
 
         }
 
         //
         // Structure version independent fields.
         //
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("ObjectTypeCode"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("ObjectTypeCode"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.ObjectTypeCode, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("InvalidAttributes"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("InvalidAttributes"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.InvalidAttributes, TRUE, FALSE, 0, 0);
 
         RtlSecureZeroMemory(&TreeListSubitems, sizeof(TreeListSubitems));
@@ -2612,21 +2622,21 @@ VOID ObDumpObjectType(
         h_tviGenericMapping = TreeListAddItem(g_TreeList, h_tviSubItem, TVIF_TEXT | TVIF_STATE, 0,
             0, TEXT("GenericMapping"), &TreeListSubitems);
 
-        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericRead"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericRead"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.GenericMapping.GenericRead, TRUE, FALSE, 0, 0);
-        
-        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericWrite"), NULL, 
+
+        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericWrite"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.GenericMapping.GenericWrite, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericExecute"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericExecute"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.GenericMapping.GenericExecute, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericAll"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviGenericMapping, TEXT("GenericAll"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.GenericMapping.GenericAll, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("ValidAccessMask"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("ValidAccessMask"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.ValidAccessMask, TRUE, FALSE, 0, 0);
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("RetainAccess"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("RetainAccess"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.RetainAccess, TRUE, FALSE, 0, 0);
 
         //Pool Type
@@ -2638,13 +2648,13 @@ VOID ObDumpObjectType(
             }
         }
 
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("PoolType"), lpType, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("PoolType"), lpType,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.PoolType, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("DefaultPagedPoolCharge"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("DefaultPagedPoolCharge"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.DefaultPagedPoolCharge, TRUE, FALSE, 0, 0);
 
-        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("DefaultNonPagedPoolCharge"), NULL, 
+        ObDumpUlong(g_TreeList, h_tviSubItem, TEXT("DefaultNonPagedPoolCharge"), NULL,
             ObjectType.Versions.ObjectTypeCompatible->TypeInfo.DefaultNonPagedPoolCharge, TRUE, FALSE, 0, 0);
 
         //
@@ -2675,7 +2685,7 @@ VOID ObDumpObjectType(
         }
 
         if (ObjectVersion > 1) {
-            
+
             switch (ObjectVersion) {
             case 2:
                 WaitObjectFlagMask = ObjectType.Versions.ObjectType_8->TypeInfo.WaitObjectFlagMask;
@@ -3425,7 +3435,7 @@ VOID ObDumpCallback(
     _In_ HWND hwndDlg
 )
 {
-    ULONG Count;
+    SIZE_T Count;
     ULONG_PTR ListHead;
     HTREEITEM h_tviRootItem;
 
@@ -3526,7 +3536,7 @@ VOID ObDumpCallback(
     // If nothing found (or possible query error) output this message.
     //
     if (Count == 0) {
-        ObDumpShowMessage(hwndDlg, 
+        ObDumpShowMessage(hwndDlg,
             TEXT("This object has no registered callbacks or there is an query error."));
     }
 

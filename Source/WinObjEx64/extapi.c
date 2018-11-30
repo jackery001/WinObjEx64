@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        19 Nov 2018
+*  DATE:        29 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -17,6 +17,20 @@
 #include "global.h"
 
 EXTENDED_API_SET g_ExtApiSet;
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+HWINSTA StubNtUserOpenWindowStation(
+    _In_ OBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ ACCESS_MASK DesiredAccess);
+
+extern DWORD dwNtUserOpenWindowStation;
+
+#ifdef __cplusplus
+}
+#endif
 
 /*
 * ExApiSetInit
@@ -30,10 +44,10 @@ EXTENDED_API_SET g_ExtApiSet;
 */
 NTSTATUS ExApiSetInit(
     VOID
-    )
+)
 {
     NTSTATUS Status;
-    HMODULE hNtdll, hUser32;
+    HMODULE hNtdll, hUser32, hWin32u;
 
     RtlSecureZeroMemory(&g_ExtApiSet, sizeof(g_ExtApiSet));
 
@@ -45,7 +59,7 @@ NTSTATUS ExApiSetInit(
         g_ExtApiSet.NtOpenPartition = (pfnNtOpenPartition)GetProcAddress(hNtdll, "NtOpenPartition");
 
         if (g_ExtApiSet.NtOpenPartition) {
-            g_ExtApiSet.NumberOfAPI++;
+            g_ExtApiSet.NumberOfAPI += 1;
         }
     }
 
@@ -53,11 +67,58 @@ NTSTATUS ExApiSetInit(
     if (hUser32) {
         g_ExtApiSet.IsImmersiveProcess = (pfnIsImmersiveProcess)GetProcAddress(hUser32, "IsImmersiveProcess");
         if (g_ExtApiSet.IsImmersiveProcess) {
-            g_ExtApiSet.NumberOfAPI++;
+            g_ExtApiSet.NumberOfAPI += 1;
         }
     }
 
-    Status = (g_ExtApiSet.NumberOfAPI == EXTAPI_ALL_MAPPED) ? 
+    //
+    // Win32k Native API now available in win32u.dll (same as ntdll stubs) since Windows 10 RS1.
+    //
+    if (g_WinObj.osver.dwBuildNumber >= 14393) {
+
+        hWin32u = GetModuleHandle(TEXT("win32u.dll"));
+        if (hWin32u == NULL) {
+            hWin32u = LoadLibraryEx(TEXT("win32u.dll"), NULL, 0); //in \\KnownDlls
+        }
+        if (hWin32u) {
+            g_ExtApiSet.NtUserOpenWindowStation = (pfnNtUserOpenWindowStation)GetProcAddress(hWin32u,
+                "NtUserOpenWindowStation");
+
+            if (g_ExtApiSet.NtUserOpenWindowStation) {
+                g_ExtApiSet.NumberOfAPI += 1;
+            }
+        }
+    }
+    else {
+
+        g_ExtApiSet.NtUserOpenWindowStation = (pfnNtUserOpenWindowStation)&StubNtUserOpenWindowStation;
+        g_ExtApiSet.NumberOfAPI += 1;
+
+        //
+        // If win32u unavailable use hardcode and select proper syscall id.
+        //
+        switch (g_WinObj.osver.dwBuildNumber) {
+
+        case 7600:
+        case 7601:
+        case 9200:
+            dwNtUserOpenWindowStation = 4256;
+            break;
+        case 9600:
+            dwNtUserOpenWindowStation = 4257;
+            break;
+        case 10240:
+        case 10586:
+            dwNtUserOpenWindowStation = 4258;
+            break;
+        default:
+            dwNtUserOpenWindowStation = 4256;
+            break;
+        }
+
+    }
+
+    Status = (g_ExtApiSet.NumberOfAPI == EXTAPI_ALL_MAPPED) ?
         STATUS_SUCCESS : STATUS_NOT_ALL_ASSIGNED;
 
     return Status;

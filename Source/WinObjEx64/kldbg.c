@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        25 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  MINIMUM SUPPORTED OS WINDOWS 7
 *
@@ -2286,6 +2286,9 @@ BOOL ObCollectionCreate(
         }
         else {
 
+            if (g_kdctx.PrivateNamespaceLookupTable == NULL)
+                g_kdctx.PrivateNamespaceLookupTable = ObFindPrivateNamespaceLookupTable(&g_kdctx);
+
             if (g_kdctx.PrivateNamespaceLookupTable != NULL) {
 
                 bResult = ObpWalkPrivateNamespaceTable(
@@ -2773,11 +2776,6 @@ DWORD WINAPI kdQuerySystemInformation(
         if (g_WinObj.osver.dwMajorVersion >= 10) {
             Context->ObHeaderCookie = ObpFindHeaderCookie(Context);
         }
-
-        //
-        // Find namespace table.
-        //
-        Context->PrivateNamespaceLookupTable = ObFindPrivateNamespaceLookupTable(Context);
 
         bResult = TRUE;
 

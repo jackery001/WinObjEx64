@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        08 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Common header file for InterProcess Communication mechanisms dialog.
 *

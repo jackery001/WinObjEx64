@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        18 Nov 2018
+*  DATE:        30 Nov 2018
 *
 *  Common header file for the program support routines.
 *
@@ -337,6 +337,11 @@ BOOL supQuerySecureBootState(
     _In_ PBOOLEAN pbSecureBoot);
 
 HWINSTA supOpenWindowStationFromContext(
+    _In_ PROP_OBJECT_INFO *Context,
+    _In_ BOOL fInherit,
+    _In_ ACCESS_MASK dwDesiredAccess);
+
+HWINSTA supOpenWindowStationFromContextEx(
     _In_ PROP_OBJECT_INFO *Context,
     _In_ BOOL fInherit,
     _In_ ACCESS_MASK dwDesiredAccess);

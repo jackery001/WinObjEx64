@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        19 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -167,14 +167,24 @@ VOID DesktopListSetInfo(
 
     ListView_DeleteAllItems(pDlgContext->ListView);
 
-    hObject = supOpenWindowStationFromContext(Context, FALSE, WINSTA_ENUMDESKTOPS);
+    if (g_WinObj.EnableExperimentalFeatures)
+        hObject = supOpenWindowStationFromContextEx(Context, FALSE, WINSTA_ENUMDESKTOPS);
+    else
+        hObject = supOpenWindowStationFromContext(Context, FALSE, WINSTA_ENUMDESKTOPS);
+    
     if (hObject) {
 
         enumParam.ObjectContext = Context;
         enumParam.DialogContext = pDlgContext;
 
         EnumDesktops(hObject, DesktopListEnumProc, (LPARAM)&enumParam);
-        CloseWindowStation(hObject);
+
+        if (g_WinObj.EnableExperimentalFeatures) {
+            NtClose((HANDLE)hObject);
+        }
+        else {
+            CloseWindowStation(hObject);
+        }
         bResult = TRUE;
     }
     ShowWindow(GetDlgItem(hwndDlg, ID_DESKTOPSNOTALL), (bResult == FALSE) ? SW_SHOW : SW_HIDE);

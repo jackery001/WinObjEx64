@@ -6,7 +6,7 @@
 *
 *  VERSION:     1.61
 *
-*  DATE:        21 Nov 2018
+*  DATE:        30 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -1691,7 +1691,7 @@ BOOL supCreateSCMSnapshot(
                 // Allocate required buffer.
                 //
                 supVirtualFree(Services);
-                dwSize = ALIGN_UP_BY((DWORD)(dwBytesNeeded + sizeof(ENUM_SERVICE_STATUS_PROCESS)), PAGE_SIZE);
+                dwSize = (DWORD)ALIGN_UP_BY(dwBytesNeeded + sizeof(ENUM_SERVICE_STATUS_PROCESS), PAGE_SIZE);
                 Services = supVirtualAlloc(dwSize);
                 if (Services == NULL)
                     break;
@@ -3243,6 +3243,66 @@ HWINSTA supOpenWindowStationFromContext(
         RtlFreeUnicodeString(&CurrentWinstaDir);
     }
 
+    return hObject;
+}
+
+/*
+* supOpenWindowStationFromContextEx
+*
+* Purpose:
+*
+* Open Window station bypass session check.
+*
+*/
+HWINSTA supOpenWindowStationFromContextEx(
+    _In_ PROP_OBJECT_INFO *Context,
+    _In_ BOOL fInherit,
+    _In_ ACCESS_MASK dwDesiredAccess)
+{
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    HWINSTA hObject = NULL;
+    HANDLE hRootDirectory = NULL;
+    UNICODE_STRING CurrentWinstaDir;
+    UNICODE_STRING WinstaDir;
+    UNICODE_STRING WinstaName;
+    OBJECT_ATTRIBUTES obja;
+    if (supxGetWindowStationName(&CurrentWinstaDir)) {
+        
+        //
+        // Same session, open as usual.
+        //
+        RtlInitUnicodeString(&WinstaDir, Context->lpCurrentObjectPath);
+        if (RtlEqualUnicodeString(&WinstaDir, &CurrentWinstaDir, TRUE)) {
+            hObject = OpenWindowStation(Context->lpObjectName, fInherit, dwDesiredAccess);
+            if (hObject)
+                Status = STATUS_SUCCESS;
+        }
+        else {
+            
+            //
+            // Different session, use NtUserOpenWindowStation.
+            //
+            InitializeObjectAttributes(&obja, &WinstaDir, OBJ_CASE_INSENSITIVE, NULL, NULL);
+            Status = NtOpenDirectoryObject(&hRootDirectory,
+                DIRECTORY_TRAVERSE,
+                &obja);
+            
+            if (NT_SUCCESS(Status)) {
+                
+                RtlInitUnicodeString(&WinstaName, Context->lpObjectName);
+                InitializeObjectAttributes(&obja, &WinstaName, OBJ_CASE_INSENSITIVE, hRootDirectory, NULL);
+                
+                if (fInherit)
+                    obja.Attributes |= OBJ_INHERIT;
+                
+                hObject = g_ExtApiSet.NtUserOpenWindowStation(&obja, dwDesiredAccess);
+                Status = RtlGetLastNtStatus();
+                NtClose(hRootDirectory);
+            }
+        }
+        RtlFreeUnicodeString(&CurrentWinstaDir);
+    }
+    SetLastError(RtlNtStatusToDosErrorNoTeb(Status));
     return hObject;
 }
 
